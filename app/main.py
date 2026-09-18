@@ -36,6 +36,9 @@ app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
 
 @app.on_event("startup")
 def startup() -> None:
+    from db.init_db import init_db
+
+    init_db()
     recognizer = state.init_recognizer()
     print(f"Loaded {len(recognizer.identities)} embeddings "
           f"across {len(set(recognizer.identities))} identities.")

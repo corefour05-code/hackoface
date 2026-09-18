@@ -259,7 +259,7 @@
           <td><span class="badge badge-{{ lab_badge_color(f.lab_id) }}">{{ f.lab }}</span></td>
           <td>{{ f.faculty_id }}</td>
           <td>{{ f.name }}</td>
-          <td>{{ f.designation }}{{ ' (Technician)' if f.role == 'technician' else '' }}</td>
+          <td>{{ f.designation or '-' }}{{ (' (' + f.role + ')') if f.role and f.role|lower != 'faculty' else '' }}</td>
           <td>{{ f.in_time | dt_time12 }}</td>
           <td>{{ f.out_time | dt_time12 if f.out_time else '-' }}</td>
         </tr>

@@ -36,6 +36,8 @@ def _save_faculty_embeddings(conn, faculty_id: str, data_urls: list[str]) -> int
     only re-detect the face here to extract its embedding — re-running the
     size/blur gate against an independently re-encoded JPEG would sometimes
     fail on borderline shots and silently drop an already-approved photo."""
+    if not data_urls:
+        return 0
     recognizer = state.get_recognizer()
     saved = 0
     for data_url in data_urls:
@@ -94,9 +96,12 @@ def _faculty_list_response(request: Request, user, intent: str | None, active_na
         conn.close()
 
     dept_counts: dict[str, int] = {}
+    role_counts: dict[str, int] = {}
     for r in rows:
         dept = r["department"] or "Unassigned"
         dept_counts[dept] = dept_counts.get(dept, 0) + 1
+        role = r["role"] or "Faculty"
+        role_counts[role] = role_counts.get(role, 0) + 1
 
     context = {
         **admin_template_context(user),
@@ -110,6 +115,7 @@ def _faculty_list_response(request: Request, user, intent: str | None, active_na
         "total_faculty": total_faculty,
         "filtered_count": len(rows),
         "dept_counts": sorted(dept_counts.items()),
+        "role_counts": sorted(role_counts.items()),
     }
     return templates.TemplateResponse(request, "faculty_list.html", context)
 
@@ -163,16 +169,79 @@ def faculty_list_delete(request: Request):
     return _faculty_list_response(request, user, "delete", "faculty_delete", "/faculty/delete")
 
 
+def _get_faculty_roles(conn) -> list[str]:
+    rows = conn.execute("SELECT name FROM faculty_roles ORDER BY name COLLATE NOCASE").fetchall()
+    roles = [r["name"] for r in rows]
+    for default_role in ["Faculty", "Technician"]:
+        if default_role not in roles:
+            roles.append(default_role)
+    return roles
+
+
+@router.get("/api/faculty/roles")
+def get_faculty_roles_api(request: Request):
+    user, redirect = require_main_admin(request)
+    if redirect:
+        return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=403)
+    conn = get_connection()
+    try:
+        roles = _get_faculty_roles(conn)
+    finally:
+        conn.close()
+    return {"ok": True, "roles": roles}
+
+
+@router.post("/api/faculty/roles")
+async def add_faculty_role_api(request: Request):
+    user, redirect = require_main_admin(request)
+    if redirect:
+        return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=403)
+    data = {}
+    if request.headers.get("content-type", "").startswith("application/json"):
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+    else:
+        form = await request.form()
+        data = dict(form)
+
+    role_name = (data.get("name") or data.get("role") or "").strip()
+    if not role_name:
+        return JSONResponse({"ok": False, "error": "Role name is required"}, status_code=400)
+
+    # Normalize casing if lower
+    if role_name.lower() == "faculty":
+        role_name = "Faculty"
+    elif role_name.lower() == "technician":
+        role_name = "Technician"
+
+    conn = get_connection()
+    try:
+        conn.execute("INSERT OR IGNORE INTO faculty_roles (name) VALUES (?)", (role_name,))
+        conn.commit()
+        roles = _get_faculty_roles(conn)
+    finally:
+        conn.close()
+    return {"ok": True, "name": role_name, "roles": roles}
+
+
 @router.get("/faculty/add")
 def faculty_add_form(request: Request):
     user, redirect = require_main_admin(request)
     if redirect:
         return redirect
+    conn = get_connection()
+    try:
+        roles = _get_faculty_roles(conn)
+    finally:
+        conn.close()
     context = {
         **admin_template_context(user),
         "active_nav": "faculty_add",
         "mode": "add",
         "faculty": None,
+        "roles": roles,
     }
     return templates.TemplateResponse(request, "faculty_form.html", context)
 
@@ -191,9 +260,12 @@ async def faculty_add_submit(request: Request):
     name = form.get("name", "").strip()
     department = form.get("department", "").strip() or None
     designation = form.get("designation", "").strip() or None
-    role = form.get("role", "faculty").strip()
-    if role not in ("faculty", "technician"):
-        role = "faculty"
+    role = form.get("role", "Faculty").strip() or "Faculty"
+    if role.lower() == "faculty":
+        role = "Faculty"
+    elif role.lower() == "technician":
+        role = "Technician"
+
     photo_urls = _collect_photo_data_urls(form)
 
     conn = get_connection()
@@ -205,6 +277,7 @@ async def faculty_add_submit(request: Request):
             return RedirectResponse(
                 f"/faculty/add?error=Faculty ID '{faculty_id}' already exists", status_code=302
             )
+        conn.execute("INSERT OR IGNORE INTO faculty_roles (name) VALUES (?)", (role,))
         conn.execute(
             "INSERT INTO faculty (faculty_id, name, department, designation, role) VALUES (?,?,?,?,?)",
             (faculty_id, name, department or "", designation, role),
@@ -234,6 +307,7 @@ def faculty_edit_form(request: Request, faculty_id: str):
         embedding_count = conn.execute(
             "SELECT COUNT(*) c FROM faculty_embeddings WHERE faculty_id=?", (faculty_id,)
         ).fetchone()["c"]
+        roles = _get_faculty_roles(conn)
     finally:
         conn.close()
 
@@ -246,6 +320,7 @@ def faculty_edit_form(request: Request, faculty_id: str):
         "mode": "edit",
         "faculty": fac,
         "embedding_count": embedding_count,
+        "roles": roles,
     }
     return templates.TemplateResponse(request, "faculty_form.html", context)
 
@@ -260,9 +335,11 @@ async def faculty_edit_submit(request: Request, faculty_id: str):
     name = form.get("name", "").strip()
     department = form.get("department", "").strip() or None
     designation = form.get("designation", "").strip() or None
-    role = form.get("role", "faculty").strip()
-    if role not in ("faculty", "technician"):
-        role = "faculty"
+    role = form.get("role", "Faculty").strip() or "Faculty"
+    if role.lower() == "faculty":
+        role = "Faculty"
+    elif role.lower() == "technician":
+        role = "Technician"
 
     new_faculty_id = form.get("faculty_id", faculty_id).strip()
     if not new_faculty_id:
@@ -286,6 +363,7 @@ async def faculty_edit_submit(request: Request, faculty_id: str):
                 )
             _rename_faculty_id(conn, faculty_id, new_faculty_id)
 
+        conn.execute("INSERT OR IGNORE INTO faculty_roles (name) VALUES (?)", (role,))
         conn.execute(
             "UPDATE faculty SET name=?, department=?, designation=?, role=? WHERE faculty_id=?",
             (name, department, designation, role, new_faculty_id),

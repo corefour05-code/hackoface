@@ -27,12 +27,23 @@
     <label>Designation
       <input type="text" name="designation" class="form-control" value="{{ faculty.designation if faculty else '' }}" />
     </label>
-    <label>Role *
-      <select name="role" class="form-control" required>
-        <option value="faculty" {{ 'selected' if not faculty or faculty.role == 'faculty' else '' }}>Faculty</option>
-        <option value="technician" {{ 'selected' if faculty and faculty.role == 'technician' else '' }}>Technician</option>
+    <div>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem;">
+        <label style="margin:0; font-weight:600;">Role *</label>
+        <button type="button" class="btn btn-outline" id="open-role-modal-btn" style="padding:0.2rem 0.5rem; font-size:0.75rem; border-radius:4px; display:inline-flex; align-items:center; gap:0.25rem;">
+          <i class="ph ph-plus-circle"></i> + Add Role
+        </button>
+      </div>
+      <select name="role" id="role-select" class="form-control" required>
+        {% set cur_role = faculty.role if faculty else 'Faculty' %}
+        {% for r in roles %}
+          <option value="{{ r }}" {{ 'selected' if cur_role|lower == r|lower else '' }}>{{ r }}</option>
+        {% endfor %}
+        {% if faculty and faculty.role and (faculty.role not in roles) %}
+          <option value="{{ faculty.role }}" selected>{{ faculty.role }}</option>
+        {% endif %}
       </select>
-    </label>
+    </div>
   </div>
 
   {% if mode == 'add' %}
@@ -96,8 +107,105 @@
   </div>
 </form>
 
+<div id="add-role-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">
+  <div class="card" style="width:100%; max-width:420px; margin:auto; background:#fff; border-radius:8px; box-shadow:0 10px 25px rgba(0,0,0,0.2); padding:1.5rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; border-bottom:1px solid #eee; padding-bottom:0.75rem;">
+      <h3 style="margin:0; font-size:1.1rem; display:flex; align-items:center; gap:0.5rem;"><i class="ph ph-plus-circle"></i> Add New Faculty Role</h3>
+      <button type="button" id="close-role-modal-btn" style="background:none; border:none; font-size:1.4rem; cursor:pointer; color:#666; line-height:1;">&times;</button>
+    </div>
+    <p style="color:var(--text-muted); font-size:0.85rem; margin-top:0;">
+      Enter the new role name (e.g. <em>Lab Assistant</em>, <em>Instructor</em>, <em>HOD</em>, <em>Research Scholar</em>).
+    </p>
+    <div style="margin-bottom:1rem;">
+      <label style="display:block; margin-bottom:0.4rem; font-weight:600; font-size:0.9rem;">Role Name *</label>
+      <input type="text" id="new-role-input" class="form-control" placeholder="e.g. Lab Assistant" />
+      <div id="role-modal-msg" style="display:none; font-size:0.8rem; margin-top:0.4rem;"></div>
+    </div>
+    <div style="display:flex; justify-content:flex-end; gap:0.5rem; border-top:1px solid #eee; padding-top:0.75rem;">
+      <button type="button" class="btn btn-outline" id="cancel-role-modal-btn">Cancel</button>
+      <button type="button" class="btn btn-primary" id="save-role-btn">Save Role</button>
+    </div>
+  </div>
+</div>
+
 <script src="/static/face-capture.js"></script>
 <script>
+const roleModal = document.getElementById('add-role-modal');
+const openRoleModalBtn = document.getElementById('open-role-modal-btn');
+const closeRoleModalBtn = document.getElementById('close-role-modal-btn');
+const cancelRoleModalBtn = document.getElementById('cancel-role-modal-btn');
+const saveRoleBtn = document.getElementById('save-role-btn');
+const newRoleInput = document.getElementById('new-role-input');
+const roleModalMsg = document.getElementById('role-modal-msg');
+const roleSelect = document.getElementById('role-select');
+
+function openRoleModal() {
+  roleModal.style.display = 'flex';
+  newRoleInput.value = '';
+  roleModalMsg.style.display = 'none';
+  newRoleInput.focus();
+}
+
+function closeRoleModal() {
+  roleModal.style.display = 'none';
+}
+
+if (openRoleModalBtn) openRoleModalBtn.addEventListener('click', openRoleModal);
+if (closeRoleModalBtn) closeRoleModalBtn.addEventListener('click', closeRoleModal);
+if (cancelRoleModalBtn) cancelRoleModalBtn.addEventListener('click', closeRoleModal);
+
+if (saveRoleBtn) {
+  saveRoleBtn.addEventListener('click', async () => {
+    const name = newRoleInput.value.trim();
+    if (!name) {
+      roleModalMsg.textContent = 'Please enter a role name.';
+      roleModalMsg.style.color = '#dc2626';
+      roleModalMsg.style.display = 'block';
+      return;
+    }
+    saveRoleBtn.disabled = true;
+    try {
+      const res = await fetch('/api/faculty/roles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        const currentVal = data.name;
+        roleSelect.innerHTML = '';
+        data.roles.forEach((r) => {
+          const opt = document.createElement('option');
+          opt.value = r;
+          opt.textContent = r;
+          if (r.toLowerCase() === currentVal.toLowerCase()) {
+            opt.selected = true;
+          }
+          roleSelect.appendChild(opt);
+        });
+        closeRoleModal();
+      } else {
+        roleModalMsg.textContent = data.error || 'Failed to add role.';
+        roleModalMsg.style.color = '#dc2626';
+        roleModalMsg.style.display = 'block';
+      }
+    } catch (e) {
+      roleModalMsg.textContent = 'Network error while adding role.';
+      roleModalMsg.style.color = '#dc2626';
+      roleModalMsg.style.display = 'block';
+    } finally {
+      saveRoleBtn.disabled = false;
+    }
+  });
+
+  newRoleInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      saveRoleBtn.click();
+    }
+  });
+}
+
 {% if mode == 'add' %}
 let photosDone = false;
 let facultyIdDuplicate = false;

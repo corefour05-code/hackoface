@@ -142,7 +142,7 @@ async def scan(request: Request, image: UploadFile = File(...)):
         if kind == "student":
             display_name = person["name"]
         else:
-            role_label = "Technician" if person["role"] == "technician" else "Faculty"
+            role_label = person["role"] if person["role"] else "Faculty"
             display_name = f"{role_label} ({person['name']})"
 
         if lab_id is None:
@@ -184,7 +184,7 @@ def scanner_logs(request: Request):
     conn = get_connection()
     try:
         rows = conn.execute(
-            "SELECT s.name AS name, s.department AS department, s.section AS section, s.batch AS batch, "
+            "SELECT s.name AS name, s.department AS department, s.year AS year, s.section AS section, s.batch AS batch, "
             "a.in_time, pin.period_name AS period_in, a.session_date AS in_date, "
             "a.out_time, pout.period_name AS period_out, a.out_date "
             "FROM attendance a "
@@ -193,9 +193,9 @@ def scanner_logs(request: Request):
             "LEFT JOIN periods pout ON pout.id = a.out_period_id "
             "WHERE a.lab_id=? AND a.session_date=? "
             "UNION ALL "
-            "SELECT (CASE WHEN f.role='technician' THEN 'Technician (' ELSE 'Faculty (' END) || f.name || ')' "
+            "SELECT (COALESCE(NULLIF(f.role, ''), 'Faculty') || ' (' || f.name || ')') "
             "AS name, f.department AS department, "
-            "NULL AS section, f.designation AS batch, "
+            "NULL AS year, NULL AS section, f.designation AS batch, "
             "fa.in_time, pin.period_name AS period_in, fa.session_date AS in_date, "
             "fa.out_time, pout.period_name AS period_out, fa.out_date "
             "FROM faculty_attendance fa "

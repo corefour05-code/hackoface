@@ -172,7 +172,7 @@
           <table id="logs-table">
             <thead>
               <tr>
-                <th>S.No</th><th>Name</th><th>Section</th><th>Batch</th>
+                <th>S.No</th><th>Name</th><th>Year</th><th>Section</th><th>Batch</th>
                 <th>In Time</th><th>Period In</th><th>IN Date</th>
                 <th>Out Time</th><th>Period Out</th><th>OUT Date</th>
               </tr>
@@ -236,8 +236,7 @@ function drawBoxes(faces) {
     const [x1, y1, x2, y2] = f.bbox;
     const known = f.identity !== 'unknown';
     ctx.strokeStyle = known ? '#21e378' : '#DC3545';
-    ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
-    const prefix = f.kind === 'faculty' ? (f.role === 'technician' ? 'Technician:' : 'Faculty:') : '';
+    const prefix = f.kind === 'faculty' ? `${f.role || 'Faculty'}: ` : '';
     const label = known ? `${prefix}${f.identity} (${f.confidence.toFixed(2)})` : 'unknown';
     ctx.fillStyle = known ? '#21e378' : '#DC3545';
     ctx.fillText(label, x1, Math.max(16, y1 - 8));
@@ -323,12 +322,13 @@ async function refreshLogs() {
     document.getElementById('today-count-badge').textContent = `${data.count || 0} today`;
     const tbody = document.querySelector('#logs-table tbody');
     if (!data.rows.length) {
-      tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No records for today yet.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="11" class="empty-state">No records for today yet.</td></tr>';
       return;
     }
     tbody.innerHTML = data.rows.map((r, i) => `
       <tr>
         <td>${i + 1}</td><td style="font-weight:600; color:var(--primary-blue);">${r.name}</td>
+        <td>${r.year != null ? r.year : '-'}</td>
         <td>${r.section || '-'}</td><td>${r.batch || '-'}</td>
         <td class="in-time">${r.in_time || '-'}</td><td>${r.period_in || '-'}</td><td>${r.in_date || '-'}</td>
         <td class="out-time">${r.out_time || '-'}</td><td>${r.period_out || '-'}</td><td>${r.out_date || '-'}</td>

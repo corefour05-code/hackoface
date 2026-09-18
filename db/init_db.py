@@ -42,6 +42,36 @@ def _migrate_pre(conn) -> None:
     if "periods" in tables and "lab_id" in _table_columns(conn, "periods"):
         _migrate_periods_to_global(conn)
 
+    if "faculty" in tables:
+        _migrate_faculty_table(conn)
+
+
+def _migrate_faculty_table(conn) -> None:
+    """If the faculty table has a legacy CHECK constraint on role, recreate it
+    without the constraint to allow dynamic custom roles."""
+    row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='faculty'").fetchone()
+    if row and row["sql"] and "CHECK" in row["sql"].upper():
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute(
+            "CREATE TABLE faculty_new ("
+            "faculty_id TEXT PRIMARY KEY, "
+            "name TEXT NOT NULL, "
+            "department TEXT NOT NULL, "
+            "designation TEXT, "
+            "role TEXT NOT NULL DEFAULT 'Faculty')"
+        )
+        conn.execute(
+            "INSERT INTO faculty_new (faculty_id, name, department, designation, role) "
+            "SELECT faculty_id, name, department, designation, "
+            "CASE WHEN LOWER(role)='technician' THEN 'Technician' "
+            "     WHEN LOWER(role)='faculty' THEN 'Faculty' "
+            "     ELSE COALESCE(NULLIF(role, ''), 'Faculty') END "
+            "FROM faculty"
+        )
+        conn.execute("DROP TABLE faculty")
+        conn.execute("ALTER TABLE faculty_new RENAME TO faculty")
+        conn.execute("PRAGMA foreign_keys = ON")
+
 
 def _migrate_periods_to_global(conn) -> None:
     """periods used to be scoped per-lab; collapse duplicate (name, start, end)
@@ -96,7 +126,20 @@ def _migrate_post(conn) -> None:
 
     faculty_cols = _table_columns(conn, "faculty")
     if "role" not in faculty_cols:
-        conn.execute("ALTER TABLE faculty ADD COLUMN role TEXT NOT NULL DEFAULT 'faculty'")
+        conn.execute("ALTER TABLE faculty ADD COLUMN role TEXT NOT NULL DEFAULT 'Faculty'")
+
+    # Seed default faculty roles
+    for role in ("Faculty", "Technician"):
+        conn.execute("INSERT OR IGNORE INTO faculty_roles (name) VALUES (?)", (role,))
+
+    # Seed any custom roles present in faculty table
+    existing_roles = conn.execute(
+        "SELECT DISTINCT role FROM faculty WHERE role IS NOT NULL AND role != ''"
+    ).fetchall()
+    for r in existing_roles:
+        val = r["role"].strip()
+        if val:
+            conn.execute("INSERT OR IGNORE INTO faculty_roles (name) VALUES (?)", (val.title() if val.islower() else val,))
 
 
 def init_db() -> None:

@@ -43,12 +43,18 @@ CREATE TABLE IF NOT EXISTS embeddings (
 
 CREATE INDEX IF NOT EXISTS idx_embeddings_roll_no ON embeddings(roll_no);
 
+CREATE TABLE IF NOT EXISTS faculty_roles (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
 CREATE TABLE IF NOT EXISTS faculty (
     faculty_id  TEXT PRIMARY KEY,
     name        TEXT NOT NULL,
     department  TEXT NOT NULL,
     designation TEXT,
-    role        TEXT NOT NULL DEFAULT 'faculty' CHECK (role IN ('faculty', 'technician'))
+    role        TEXT NOT NULL DEFAULT 'Faculty'
 );
 
 CREATE TABLE IF NOT EXISTS faculty_embeddings (
