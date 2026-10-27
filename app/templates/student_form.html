@@ -35,30 +35,26 @@
 <form id="student-form" class="card" method="post"
       action="{% if mode == 'add' %}/students/add{% elif mode == 'edit' %}/students/{{ student.roll_no }}/edit{% else %}#{% endif %}">
   <div class="grid-2">
-    <label>Student ID / Register Number *
+    <label>Participant ID / Register Number *
       <input type="text" name="roll_no" id="roll_no-input" class="form-control" required
              value="{{ student.roll_no if student else '' }}"
-             {% if mode == 'update' %}placeholder="e.g. 23it112 — then press Tab"{% endif %} />
+             {% if mode == 'update' %}placeholder="e.g. 23it112 or P101 — then press Tab"{% endif %} />
       <div id="roll-no-warning" class="status err" style="display:none;"></div>
       {% if mode == 'add' or mode == 'update' %}
       <div id="roll-no-info" class="status ok" style="display:none;"></div>
       {% endif %}
     </label>
-    <label>Name *
+    <label>Full Name *
       <input type="text" name="name" class="form-control" required value="{{ student.name if student else '' }}" />
     </label>
-    <label>Batch (e.g. 2023-2027)
-      <input type="text" name="batch" class="form-control" value="{{ student.batch if student else '' }}" />
-    </label>
-    <label>Year
-      <select name="year" class="form-control">
-        {% for y in [1,2,3,4] %}
-        <option value="{{ y }}" {{ 'selected' if student and student.year == y else '' }}>{{ y }}</option>
+    <label>Team Name *
+      <input type="text" name="team_name" list="teams-list" class="form-control" required placeholder="e.g. ByteBandits or Team Alpha" value="{{ student.team_name if student and student.team_name else '' }}" />
+      <datalist id="teams-list">
+        {% for t in existing_teams %}
+        <option value="{{ t }}"></option>
         {% endfor %}
-      </select>
-    </label>
-    <label>Section
-      <input type="text" name="section" class="form-control" value="{{ student.section if student else '' }}" />
+      </datalist>
+      <small style="color:var(--text-muted); font-size:0.75rem;">Max 4 members per team &bull; Up to 30 teams</small>
     </label>
   </div>
 
@@ -184,12 +180,14 @@ async function checkRollNo() {
       rollNoWarning.style.display = 'block';
     } else if (data.exists) {
       nameInput.value = data.name || '';
+      const teamInput = document.querySelector('input[name="team_name"]');
+      if (teamInput && data.team_name) teamInput.value = data.team_name;
       batchInput.value = data.batch || '';
       sectionInput.value = data.section || '';
       if (data.year) yearSelect.value = data.year;
       rollNoInfo.textContent = data.archived
-        ? `Found pre-registered (archived) student — details loaded. Capture photos to re-enroll.`
-        : `Found pre-registered student — details loaded. Just capture their photos below.`;
+        ? `Found pre-registered (archived) participant — details loaded. Capture photos to re-enroll.`
+        : `Found pre-registered participant — details loaded. Just capture their photos below.`;
       rollNoInfo.style.display = 'block';
     }
   } catch (e) {
@@ -275,9 +273,7 @@ const rollNoInput = document.getElementById('roll_no-input');
 const rollNoWarning = document.getElementById('roll-no-warning');
 const rollNoInfo = document.getElementById('roll-no-info');
 const nameInput = document.querySelector('input[name="name"]');
-const batchInput = document.querySelector('input[name="batch"]');
-const yearSelect = document.querySelector('select[name="year"]');
-const sectionInput = document.querySelector('input[name="section"]');
+const teamInput = document.querySelector('input[name="team_name"]');
 const submitBtn = document.getElementById('submit-btn');
 const studentForm = document.getElementById('student-form');
 const recaptureWrap = document.getElementById('recapture-wrap');
@@ -294,15 +290,13 @@ async function handleRollNoLookup() {
       const res = await fetch(`/students/check-roll-no?roll_no=${encodeURIComponent(value)}`);
       const data = await res.json();
       if (!data.exists) {
-        rollNoWarning.textContent = `No student found with ID "${value}".`;
+        rollNoWarning.textContent = `No participant found with ID "${value}".`;
         rollNoWarning.style.display = 'block';
         return;
       }
-      nameInput.value = data.name || '';
-      batchInput.value = data.batch || '';
-      sectionInput.value = data.section || '';
-      if (data.year) yearSelect.value = data.year;
-      embCountText.textContent = data.embedding_count;
+      if (nameInput) nameInput.value = data.name || '';
+      if (teamInput && data.team_name) teamInput.value = data.team_name;
+      if (embCountText) embCountText.textContent = data.embedding_count;
       recaptureWrap.style.display = 'block';
       submitBtn.disabled = false;
       loadedRollNo = value;

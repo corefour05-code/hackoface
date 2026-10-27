@@ -1,10 +1,10 @@
 {% extends "base_admin.html" %}
-{% block title %}Lab Report{% endblock %}
+{% block title %}Attendance Report{% endblock %}
 {% block content %}
 <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1.5rem;">
   <div>
-    <h1 style="margin-bottom:0.25rem;">Lab Report</h1>
-    <p style="color: var(--text-muted); margin:0;">Date wise lab attendance report.</p>
+    <h1 style="margin-bottom:0.25rem;">Attendance Report</h1>
+    <p style="color: var(--text-muted); margin:0;">Detailed venue attendance and check-in/out records.</p>
   </div>
   <a class="btn btn-outline" href="/report/pdf?{{ query_string }}"><i class="ph ph-download"></i>Download Report (PDF)</a>
 </div>
@@ -17,10 +17,10 @@
     <label style="margin:0;">To Date
       <input type="date" name="to_date" class="form-control" value="{{ to_date }}" />
     </label>
-    <label style="margin:0;">Laboratory
+    <label style="margin:0;">Venue
       {% if is_main_admin %}
       <select name="lab_id" class="form-control">
-        <option value="">All Laboratories</option>
+        <option value="">All Venues</option>
         {% for lab in labs %}
         <option value="{{ lab.id }}" {{ 'selected' if lab.id == selected_lab_id else '' }}>{{ lab.name }}</option>
         {% endfor %}
@@ -32,23 +32,19 @@
       <input type="hidden" name="lab_id" value="{{ selected_lab_id }}" />
       {% endif %}
     </label>
-    <label style="margin:0;">Section
-      <input type="text" name="section" id="filter-section" class="form-control" value="{{ section or '' }}" />
-    </label>
-    <label style="margin:0;">Year
-      <input type="text" name="year" id="filter-year" class="form-control" value="{{ year or '' }}" />
-    </label>
-    <label style="margin:0;">Type
-      <select name="kind" class="form-control">
-        <option value="all" {{ 'selected' if kind == 'all' else '' }}>All</option>
-        <option value="student" {{ 'selected' if kind == 'student' else '' }}>Students</option>
-        <option value="faculty" {{ 'selected' if kind == 'faculty' else '' }}>Faculty</option>
+    <label style="margin:0;">Team
+      <select name="team_name" class="form-control">
+        <option value="">All Teams</option>
+        {% for t in teams %}
+        <option value="{{ t }}" {{ 'selected' if t == team_name else '' }}>{{ t }}</option>
+        {% endfor %}
       </select>
     </label>
-    <label style="margin:0; flex-grow:1;">Search Name/ID
-      <input type="text" name="q" id="filter-q" class="form-control" value="{{ q or '' }}" />
+    <label style="margin:0; flex-grow:1;">Search Participant / Team
+      <input type="text" name="q" id="filter-q" class="form-control" value="{{ q or '' }}" placeholder="Name, ID, or Team" />
     </label>
     <button type="submit" class="btn btn-primary">SEARCH</button>
+    <a class="btn btn-outline" href="/report">RESET</a>
   </form>
 </div>
 
@@ -56,29 +52,21 @@
   <div style="display:flex; flex-wrap:wrap; gap:1.75rem; align-items:flex-start;">
     <div>
       <strong style="font-size:1.4rem; color:var(--primary-blue);">{{ total_records }}</strong>
-      <div style="color:var(--text-muted); font-size:0.8rem;">Total Records</div>
+      <div style="color:var(--text-muted); font-size:0.8rem;">Total Sessions</div>
     </div>
     <div>
       <strong style="font-size:1.4rem;">{{ unique_students }}</strong>
-      <div style="color:var(--text-muted); font-size:0.8rem;">Unique Students</div>
+      <div style="color:var(--text-muted); font-size:0.8rem;">Distinct Participants</div>
     </div>
     <div>
-      <strong style="font-size:1.4rem;">{{ unique_faculty }}</strong>
-      <div style="color:var(--text-muted); font-size:0.8rem;">Unique Faculty</div>
+      <strong style="font-size:1.4rem;">{{ team_counts|length }}</strong>
+      <div style="color:var(--text-muted); font-size:0.8rem;">Active Teams</div>
     </div>
-    {% if year_counts %}
-    <div style="flex-grow:1; min-width:180px;">
-      <div style="color:var(--text-muted); font-size:0.8rem; margin-bottom:0.4rem;">By Year</div>
+    {% if team_counts %}
+    <div style="flex-grow:1; min-width:240px;">
+      <div style="color:var(--text-muted); font-size:0.8rem; margin-bottom:0.4rem;">Top Teams by Detections</div>
       <div style="display:flex; flex-wrap:wrap; gap:0.4rem;">
-        {% for y, c in year_counts %}<span class="badge badge-blue">Year {{ y }}: {{ c }}</span>{% endfor %}
-      </div>
-    </div>
-    {% endif %}
-    {% if section_counts %}
-    <div style="flex-grow:1; min-width:180px;">
-      <div style="color:var(--text-muted); font-size:0.8rem; margin-bottom:0.4rem;">By Section</div>
-      <div style="display:flex; flex-wrap:wrap; gap:0.4rem;">
-        {% for s, c in section_counts %}<span class="badge badge-teal">{{ s }}: {{ c }}</span>{% endfor %}
+        {% for t, c in team_counts[:6] %}<span class="badge badge-blue">{{ t }}: {{ c }}</span>{% endfor %}
       </div>
     </div>
     {% endif %}
@@ -90,33 +78,35 @@
     <table id="report-table" style="white-space:nowrap;">
       <thead>
         <tr>
-          <th>S.No</th><th>Type</th><th>ID</th><th>Name</th><th>Section</th><th>Batch</th><th>Year</th>
-          <th>Laboratory</th><th>In Time</th><th>Period In</th><th>In Date</th>
-          <th>Out Time</th><th>Period Out</th><th>Out Date</th>
+          <th>S.No</th><th>ID</th><th>Name</th><th>Team Name</th>
+          <th>Venue</th><th>In Time</th><th>In Date</th>
+          <th>Out Time</th><th>Out Date</th><th>Status</th>
         </tr>
       </thead>
       <tbody>
         {% for r in rows %}
         <tr>
           <td>{{ loop.index }}</td>
-          <td><span class="badge badge-{{ 'blue' if r.kind == 'student' else 'purple' }}">{{ r.kind | capitalize }}</span></td>
-          <td>{{ r.person_id }}</td>
-          <td>{{ r.name }}</td>
-          <td>{{ r.section or '-' }}</td>
-          <td>{{ r.batch or '-' }}</td>
-          <td>{{ r.year or '-' }}</td>
+          <td><code>{{ r.person_id }}</code></td>
+          <td style="font-weight:600;">{{ r.name }}</td>
+          <td><span class="badge badge-blue">{{ r.team_name or 'No Team' }}</span></td>
           <td><span class="badge badge-{{ lab_badge_color(r.lab_id) }}">{{ r.lab_name }}</span></td>
           <td style="color: var(--success); font-weight:600;">{{ r.in_time | dt_time12 }}</td>
-          <td>{{ r.period_in or '-' }}</td>
           <td>{{ r.in_date or '-' }}</td>
           <td style="color: var(--danger); font-weight:600;">{{ r.out_time | dt_time12 }}</td>
-          <td>{{ r.period_out or '-' }}</td>
           <td>{{ r.out_date or '-' }}</td>
+          <td>
+            {% if not r.out_time %}
+            <span class="badge badge-teal">IN VENUE</span>
+            {% else %}
+            <span class="badge badge-grey">OUT</span>
+            {% endif %}
+          </td>
         </tr>
         {% else %}
-        <tr><td colspan="14" style="text-align:center; color:var(--text-muted); padding:2.5rem;">
+        <tr><td colspan="10" style="text-align:center; color:var(--text-muted); padding:2.5rem;">
           <i class="ph ph-file-search" style="font-size:2rem; display:block; margin-bottom:0.5rem;"></i>
-          No attendance records found for the selected dates.
+          No attendance records found for the selected criteria.
         </td></tr>
         {% endfor %}
       </tbody>
@@ -126,23 +116,15 @@
 
 <script>
 function liveFilter() {
-  const section = document.getElementById('filter-section').value.toLowerCase();
-  const year = document.getElementById('filter-year').value.toLowerCase();
   const q = document.getElementById('filter-q').value.toLowerCase();
   document.querySelectorAll('#report-table tbody tr').forEach((row) => {
     const cells = row.querySelectorAll('td');
-    if (cells.length < 14) return;
-    const rowSection = cells[4].textContent.toLowerCase();
-    const rowYear = cells[6].textContent.toLowerCase();
+    if (cells.length < 10) return;
     const rowText = row.textContent.toLowerCase();
-    const matches = (!section || rowSection.includes(section))
-      && (!year || rowYear.includes(year))
-      && (!q || rowText.includes(q));
+    const matches = !q || rowText.includes(q);
     row.style.display = matches ? '' : 'none';
   });
 }
-['filter-section', 'filter-year', 'filter-q'].forEach((id) => {
-  document.getElementById(id).addEventListener('keyup', liveFilter);
-});
+document.getElementById('filter-q').addEventListener('keyup', liveFilter);
 </script>
 {% endblock %}

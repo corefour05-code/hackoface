@@ -1,8 +1,4 @@
-"""Public self-registration: students enter their own basic details (no face
-capture, no login) ahead of time. Staff later look their ID up on the Add
-Student page, which auto-fills these details and jumps straight to the
-face-capture step — see students.py's /students/check-roll-no lookup.
-"""
+"""Public self-registration for Hackathon participants: basic details entry before face capture."""
 
 import sys
 from pathlib import Path
@@ -21,18 +17,26 @@ router = APIRouter()
 
 @router.get("/register")
 def register_form(request: Request):
+    conn = get_connection()
+    try:
+        existing_teams = [
+            r["team_name"] for r in conn.execute(
+                "SELECT DISTINCT team_name FROM students WHERE team_name != '' ORDER BY team_name"
+            ).fetchall()
+        ]
+    finally:
+        conn.close()
+
     return templates.TemplateResponse(request, "register.html", {
         "success": request.query_params.get("success"),
         "error": request.query_params.get("error"),
+        "existing_teams": existing_teams,
     })
 
 
 @router.get("/register/check")
 def register_check(request: Request):
-    """Public existence check for the self-registration form's live blur
-    check. Deliberately returns only a boolean — no name/details — since this
-    endpoint has no auth and shouldn't leak other students' info."""
-    roll_no = request.query_params.get("roll_no", "").strip().lower()
+    roll_no = request.query_params.get("roll_no", "").strip()
     if not roll_no:
         return JSONResponse({"exists": False})
 
@@ -53,33 +57,49 @@ async def register_submit(request: Request):
         return RedirectResponse(f"/register?error={e}", status_code=302)
 
     name = form.get("name", "").strip()
-    batch = form.get("batch", "").strip() or None
-    year = int(form.get("year") or 1)
-    section = form.get("section", "").strip() or None
+    team_name = form.get("team_name", "").strip()
 
     if not name:
-        return RedirectResponse("/register?error=Name is required", status_code=302)
+        return RedirectResponse("/register?error=Full Name is required", status_code=302)
+    if not team_name:
+        return RedirectResponse("/register?error=Team Name is required", status_code=302)
 
     conn = get_connection()
     try:
         existing = conn.execute("SELECT 1 FROM students WHERE roll_no=?", (roll_no,)).fetchone()
         if existing is not None:
             return RedirectResponse(
-                f"/register?error={roll_no} is already registered. "
-                "See the lab in-charge if this is a mistake.",
-                status_code=302,
+                f"/register?error=Participant ID '{roll_no}' is already registered.", status_code=302
             )
+
+        # Enforce max 4 members per team
+        team_count = conn.execute(
+            "SELECT COUNT(*) c FROM students WHERE team_name=?", (team_name,)
+        ).fetchone()["c"]
+        if team_count >= 4:
+            return RedirectResponse(
+                f"/register?error=Team '{team_name}' already has the maximum of 4 members", status_code=302
+            )
+
+        # Enforce max 30 teams
+        total_teams = conn.execute(
+            "SELECT COUNT(DISTINCT team_name) c FROM students WHERE team_name != '' AND team_name != ?",
+            (team_name,)
+        ).fetchone()["c"]
+        if total_teams >= 30:
+            return RedirectResponse(
+                "/register?error=Maximum limit of 30 teams reached for the hackathon", status_code=302
+            )
+
         conn.execute(
-            "INSERT INTO students (roll_no, name, year, department, batch, section) "
-            "VALUES (?,?,?,?,?,?)",
-            (roll_no, name, year, "", batch, section),
+            "INSERT INTO students (roll_no, name, team_name) VALUES (?,?,?)",
+            (roll_no, name, team_name),
         )
         conn.commit()
     finally:
         conn.close()
 
     return RedirectResponse(
-        f"/register?success=Details saved for {roll_no}. "
-        "Please visit the lab to complete your face capture.",
+        f"/register?success=Details saved for {name} ({roll_no}) in Team {team_name}. Please proceed to the event desk for face capture.",
         status_code=302,
     )

@@ -23,8 +23,9 @@ router = APIRouter()
 def _labs_with_admin(conn):
     return conn.execute(
         "SELECT l.*, "
-        "(SELECT u.username FROM users u WHERE u.lab_id = l.id AND u.role='admin' LIMIT 1) AS admin_username "
-        "FROM labs l ORDER BY l.name"
+        "(SELECT u.username FROM users u WHERE u.lab_id = l.id AND u.role='admin' LIMIT 1) AS admin_username, "
+        "(SELECT COUNT(DISTINCT roll_no) FROM attendance a WHERE a.lab_id = l.id AND a.out_time IS NULL) AS live_inside "
+        "FROM labs l ORDER BY l.id"
     ).fetchall()
 
 
@@ -91,6 +92,26 @@ def lab_create_submit(
         conn.close()
 
     return RedirectResponse(f"/labs?success=Created lab '{name}'", status_code=302)
+
+
+@router.post("/labs/{lab_id}/edit")
+def lab_edit_submit(request: Request, lab_id: int, name: str = Form(...)):
+    user, redirect = require_main_admin(request)
+    if redirect:
+        return redirect
+
+    new_name = name.strip()
+    if not new_name:
+        return RedirectResponse("/labs?error=Venue name cannot be empty", status_code=302)
+
+    conn = get_connection()
+    try:
+        conn.execute("UPDATE labs SET name=? WHERE id=?", (new_name, lab_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+    return RedirectResponse(f"/labs?success=Venue renamed to '{new_name}'", status_code=302)
 
 
 @router.post("/labs/{lab_id}/delete")

@@ -1,163 +1,132 @@
-"""Create/migrate the SQLite database to the current schema. Safe to re-run.
+"""Initialize and manage the SQLite database for the 24-Hour Hackathon Face Recognition platform."""
 
-Table creation uses IF NOT EXISTS. For tables that predate a schema change
-(students gaining batch/section/sex; attendance gaining lab_id-as-FK + IN/OUT
-columns), this adds the missing pieces in place rather than dropping data.
-"""
-
+import os
+import shutil
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config import DATA_DIR, DB_PATH, ENROLLMENT_PHOTOS_DIR
+from core.security import hash_password
 from db.connection import get_connection
 
 SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
 
 
-def _table_columns(conn, table: str) -> set[str]:
-    return {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
-
-
-def _migrate_pre(conn) -> None:
-    """Handle changes that must happen before schema.sql runs (e.g. a table
-    whose shape changed incompatibly with CREATE TABLE IF NOT EXISTS)."""
-    tables = {
-        row["name"]
-        for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
-    }
-    if "attendance" in tables:
-        cols = _table_columns(conn, "attendance")
-        if "in_time" not in cols:
-            count = conn.execute("SELECT COUNT(*) c FROM attendance").fetchone()["c"]
-            if count == 0:
-                conn.execute("DROP TABLE attendance")
-            else:
-                raise RuntimeError(
-                    "attendance table uses the old schema and has existing rows — "
-                    "manual migration required (not auto-dropping non-empty data)"
-                )
-
-    if "periods" in tables and "lab_id" in _table_columns(conn, "periods"):
-        _migrate_periods_to_global(conn)
-
-    if "faculty" in tables:
-        _migrate_faculty_table(conn)
-
-
-def _migrate_faculty_table(conn) -> None:
-    """If the faculty table has a legacy CHECK constraint on role, recreate it
-    without the constraint to allow dynamic custom roles."""
-    row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='faculty'").fetchone()
-    if row and row["sql"] and "CHECK" in row["sql"].upper():
-        conn.execute("PRAGMA foreign_keys = OFF")
-        conn.execute(
-            "CREATE TABLE faculty_new ("
-            "faculty_id TEXT PRIMARY KEY, "
-            "name TEXT NOT NULL, "
-            "department TEXT NOT NULL, "
-            "designation TEXT, "
-            "role TEXT NOT NULL DEFAULT 'Faculty')"
-        )
-        conn.execute(
-            "INSERT INTO faculty_new (faculty_id, name, department, designation, role) "
-            "SELECT faculty_id, name, department, designation, "
-            "CASE WHEN LOWER(role)='technician' THEN 'Technician' "
-            "     WHEN LOWER(role)='faculty' THEN 'Faculty' "
-            "     ELSE COALESCE(NULLIF(role, ''), 'Faculty') END "
-            "FROM faculty"
-        )
-        conn.execute("DROP TABLE faculty")
-        conn.execute("ALTER TABLE faculty_new RENAME TO faculty")
-        conn.execute("PRAGMA foreign_keys = ON")
-
-
-def _migrate_periods_to_global(conn) -> None:
-    """periods used to be scoped per-lab; collapse duplicate (name, start, end)
-    slots across labs into one global row, repointing any attendance rows that
-    referenced a removed period id at the surviving row for the same slot.
-
-    Note: we never rename the live "periods" table — SQLite auto-rewrites
-    other tables' FK clauses (e.g. attendance's REFERENCES periods(id)) to
-    follow a renamed table, which would leave them dangling once the old
-    table is dropped. Instead we build the replacement under a temp name,
-    drop "periods", then rename the replacement into that exact name so
-    attendance's untouched FK clause resolves correctly again.
-    """
-    conn.execute("PRAGMA foreign_keys = OFF")
-
-    rows = conn.execute("SELECT id, period_name, start_time, end_time FROM periods").fetchall()
-
-    conn.execute(
-        "CREATE TABLE periods_new ("
-        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-        "period_name TEXT NOT NULL,"
-        "start_time TEXT NOT NULL,"
-        "end_time TEXT NOT NULL)"
-    )
-
-    new_id_by_key: dict[tuple, int] = {}
-    for r in rows:
-        key = (r["period_name"], r["start_time"], r["end_time"])
-        if key not in new_id_by_key:
-            cur = conn.execute(
-                "INSERT INTO periods_new (period_name, start_time, end_time) VALUES (?,?,?)", key
-            )
-            new_id_by_key[key] = cur.lastrowid
-
-    for r in rows:
-        key = (r["period_name"], r["start_time"], r["end_time"])
-        new_id = new_id_by_key[key]
-        conn.execute("UPDATE attendance SET in_period_id=? WHERE in_period_id=?", (new_id, r["id"]))
-        conn.execute("UPDATE attendance SET out_period_id=? WHERE out_period_id=?", (new_id, r["id"]))
-
-    conn.execute("DROP TABLE periods")
-    conn.execute("ALTER TABLE periods_new RENAME TO periods")
-    conn.execute("PRAGMA foreign_keys = ON")
-
-
-def _migrate_post(conn) -> None:
-    """Add columns to tables that already existed under the old schema."""
-    cols = _table_columns(conn, "students")
-    for col in ("batch", "section", "sex", "archived_at"):
-        if col not in cols:
-            conn.execute(f"ALTER TABLE students ADD COLUMN {col} TEXT")
-
-    faculty_cols = _table_columns(conn, "faculty")
-    if "role" not in faculty_cols:
-        conn.execute("ALTER TABLE faculty ADD COLUMN role TEXT NOT NULL DEFAULT 'Faculty'")
-
-    # Seed default faculty roles
-    for role in ("Faculty", "Technician"):
-        conn.execute("INSERT OR IGNORE INTO faculty_roles (name) VALUES (?)", (role,))
-
-    # Seed any custom roles present in faculty table
-    existing_roles = conn.execute(
-        "SELECT DISTINCT role FROM faculty WHERE role IS NOT NULL AND role != ''"
-    ).fetchall()
-    for r in existing_roles:
-        val = r["role"].strip()
-        if val:
-            conn.execute("INSERT OR IGNORE INTO faculty_roles (name) VALUES (?)", (val.title() if val.islower() else val,))
-
-
-def init_db() -> None:
+def reset_hackathon_db() -> None:
+    """Completely wipe academic / demo data and initialize a clean 24-hour hackathon database.
+    Leaves 0 participants so real hackathon teams can be registered cleanly."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     ENROLLMENT_PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
 
-    schema_sql = SCHEMA_PATH.read_text()
+    # Clean old enrollment photos
+    for item in ENROLLMENT_PHOTOS_DIR.iterdir():
+        if item.is_dir():
+            shutil.rmtree(item)
+        elif item.is_file():
+            item.unlink()
+
     conn = get_connection()
     try:
-        _migrate_pre(conn)
+        conn.execute("PRAGMA foreign_keys = OFF")
+        
+        # Drop legacy tables, labs, and users
+        legacy_tables = [
+            "faculty_attendance", "faculty_embeddings", "faculty", "faculty_roles",
+            "periods", "periods_new", "shutdown_times", "class_strength",
+            "attendance", "embeddings", "students", "event_config", "labs",
+            "batch_runs", "batch_run_students", "batch_run_embeddings", "users"
+        ]
+        for tbl in legacy_tables:
+            conn.execute(f"DROP TABLE IF EXISTS {tbl}")
+        
+        # Re-run clean schema
+        schema_sql = SCHEMA_PATH.read_text(encoding="utf-8")
         conn.executescript(schema_sql)
-        _migrate_post(conn)
+
+        # Seed default admin user (admin / admin123)
+        admin_exists = conn.execute("SELECT id FROM users WHERE username='admin'").fetchone()
+        if not admin_exists:
+            conn.execute(
+                "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
+                ("admin", hash_password("admin123"), "admin")
+            )
+
+        # Seed the 3 editable venues if not present
+        existing_labs = conn.execute("SELECT COUNT(*) c FROM labs").fetchone()["c"]
+        if existing_labs == 0:
+            venues = [
+                ("Venue 1 - Main Coding Hall", "venue1"),
+                ("Venue 2 - Mentorship Hall", "venue2"),
+                ("Venue 3 - Presentation Hall", "venue3"),
+            ]
+            for v_name, u_name in venues:
+                cur = conn.execute("INSERT INTO labs (name) VALUES (?)", (v_name,))
+                lab_id = cur.lastrowid
+                conn.execute(
+                    "INSERT INTO users (username, password_hash, role, lab_id) VALUES (?, ?, ?, ?)",
+                    (u_name, hash_password("venue123"), "user", lab_id)
+                )
+
+        # Seed master event config
+        defaults = {
+            "event_name": "PSNA IT 24-Hour Hackathon",
+            "duration_hours": "24",
+            "is_active": "0",
+            "start_time": "",
+            "max_team_size": "4",
+            "max_teams": "30",
+        }
+        for k, v in defaults.items():
+            conn.execute("INSERT OR REPLACE INTO event_config (key, value) VALUES (?, ?)", (k, v))
+
+        conn.execute("PRAGMA foreign_keys = ON")
         conn.commit()
     finally:
         conn.close()
 
-    print(f"Database initialized/migrated at {DB_PATH}")
+    print(f"Hackathon database cleanly reset at {DB_PATH} with 0 participants and 3 editable venues.")
+
+
+def init_db() -> None:
+    """Ensure database schema is up-to-date without wiping existing data."""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    ENROLLMENT_PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
+
+    conn = get_connection()
+    try:
+        schema_sql = SCHEMA_PATH.read_text(encoding="utf-8")
+        conn.executescript(schema_sql)
+
+        # Ensure admin exists
+        admin_exists = conn.execute("SELECT id FROM users WHERE username='admin'").fetchone()
+        if not admin_exists:
+            conn.execute(
+                "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
+                ("admin", hash_password("admin123"), "admin")
+            )
+
+        # Ensure event_config defaults exist
+        defaults = {
+            "event_name": "PSNA IT 24-Hour Hackathon",
+            "duration_hours": "24",
+            "is_active": "0",
+            "start_time": "",
+            "max_team_size": "4",
+            "max_teams": "30",
+        }
+        for k, v in defaults.items():
+            conn.execute("INSERT OR IGNORE INTO event_config (key, value) VALUES (?, ?)", (k, v))
+
+        conn.commit()
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":
-    init_db()
+    # If called with --reset or standalone, do clean reset
+    if "--init-only" in sys.argv:
+        init_db()
+    else:
+        reset_hackathon_db()

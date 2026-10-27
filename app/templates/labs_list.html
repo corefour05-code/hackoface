@@ -1,33 +1,59 @@
 {% extends "base_admin.html" %}
-{% block title %}Manage Labs{% endblock %}
+{% block title %}Manage Event Venues{% endblock %}
 {% block content %}
-<div class="card">
-  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
-    <h2 style="margin:0; display:flex; align-items:center; gap:0.5rem;"><i class="ph ph-flask"></i>Manage Laboratories</h2>
-    <a class="btn btn-primary" href="/labs/create"><i class="ph ph-plus"></i>Create New Lab</a>
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+  <div>
+    <h1 style="margin-bottom:0.25rem;">Event Venues</h1>
+    <p style="color: var(--text-muted); margin:0;">
+      Configure and edit the 3 active venues/halls for the 24-hour hackathon.
+    </p>
   </div>
+  <a class="btn btn-primary" href="/labs/create"><i class="ph ph-plus"></i>Add Venue</a>
+</div>
+
+<div class="card" style="padding:0; overflow:hidden;">
   <table>
-    <thead><tr><th>ID</th><th>Lab Name</th><th>Assigned Admin</th><th>Actions</th></tr></thead>
+    <thead>
+      <tr>
+        <th style="width:60px;">ID</th>
+        <th>Venue Name</th>
+        <th>Live Inside</th>
+        <th>Assigned Operator</th>
+        <th style="text-align:right;">Actions</th>
+      </tr>
+    </thead>
     <tbody>
       {% for lab in labs %}
       <tr>
-        <td>{{ lab.id }}</td>
-        <td>{{ lab.name }}</td>
+        <td><strong>#{{ lab.id }}</strong></td>
+        <td>
+          <form method="post" action="/labs/{{ lab.id }}/edit" style="display:flex; gap:0.5rem; align-items:center; margin:0;">
+            <input type="text" name="name" class="form-control" value="{{ lab.name }}" style="max-width:320px; font-weight:600;" required />
+            <button type="submit" class="btn btn-secondary" style="padding:0.35rem 0.75rem; font-size:0.8rem;">Rename</button>
+          </form>
+        </td>
+        <td>
+          <span class="badge {{ 'badge-teal' if lab.live_inside > 0 else 'badge-grey' }}" style="font-weight:600; font-size:0.85rem; padding:0.3rem 0.7rem;">
+            {{ lab.live_inside }} inside
+          </span>
+        </td>
         <td>
           {% if lab.admin_username %}
           <span class="badge badge-indigo">{{ lab.admin_username }}</span>
           {% else %}
-          <span style="color: var(--text-muted);">Unassigned</span>
+          <span style="color: var(--text-muted); font-size:0.85rem;">Admin</span>
           {% endif %}
         </td>
-        <td>
-          <form method="post" action="/labs/{{ lab.id }}/delete" onsubmit="return confirm('Delete lab \'{{ lab.name }}\'? This removes its periods, users, and attendance records.');">
-            <button type="submit" class="btn btn-danger">Delete</button>
+        <td style="text-align:right;">
+          <form method="post" action="/labs/{{ lab.id }}/delete" onsubmit="return confirm('Delete venue \'{{ lab.name }}\'?');" style="margin:0; display:inline;">
+            <button type="submit" class="btn btn-danger" style="padding:0.35rem 0.75rem; font-size:0.8rem;">Delete</button>
           </form>
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="4" style="text-align:center; color:var(--text-muted); padding:2rem;">No labs configured yet.</td></tr>
+      <tr>
+        <td colspan="5" style="text-align:center; color:var(--text-muted); padding:2rem;">No venues configured.</td>
+      </tr>
       {% endfor %}
     </tbody>
   </table>

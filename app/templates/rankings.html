@@ -1,0 +1,282 @@
+{% extends "base_admin.html" %}
+{% block title %}30 Teams Hall Endurance Rankings - PSNA 24h Hackathon{% endblock %}
+{% block extra_head %}
+<style>
+  .rank-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    font-weight: 800;
+    font-size: 0.9rem;
+  }
+  .rank-1 { background: #FEF08A; color: #854D0E; border: 2px solid #EAB308; box-shadow: 0 0 10px rgba(234, 179, 8, 0.4); }
+  .rank-2 { background: #E2E8F0; color: #334155; border: 2px solid #94A3B8; }
+  .rank-3 { background: #FFEDD5; color: #9A3412; border: 2px solid #F97316; }
+  .rank-other { background: #F1F5F9; color: #475569; border: 1px solid #CBD5E1; }
+
+  .podium-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.25rem;
+    margin-bottom: 2rem;
+  }
+  .podium-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+    border: 1px solid #E2E8F0;
+    position: relative;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .podium-card:hover { transform: translateY(-4px); box-shadow: 0 12px 25px rgba(0,0,0,0.1); }
+  .podium-card.first { border-top: 6px solid #EAB308; background: linear-gradient(180deg, #FEFCE8 0%, #FFFFFF 35%); }
+  .podium-card.second { border-top: 6px solid #94A3B8; background: linear-gradient(180deg, #F8FAFC 0%, #FFFFFF 35%); }
+  .podium-card.third { border-top: 6px solid #F97316; background: linear-gradient(180deg, #FFF7ED 0%, #FFFFFF 35%); }
+
+  .member-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    background: #F1F5F9;
+    color: #334155;
+    margin: 2px;
+  }
+  .member-pill.in { background: #D1FAE5; color: #065F46; font-weight: 600; }
+  .member-pill.out { background: #FEE2E2; color: #991B1B; }
+
+  .progress-bar-bg {
+    background: #E2E8F0;
+    border-radius: 999px;
+    height: 10px;
+    width: 100%;
+    overflow: hidden;
+    margin-top: 5px;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    background: #059669;
+    border-radius: 999px;
+    transition: width 0.4s ease;
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem;">
+  <div>
+    <div style="display:flex; align-items:center; gap:0.5rem;">
+      <i class="ph ph-trophy" style="font-size:2rem; color:#EAB308;"></i>
+      <h1 style="margin:0;">30 Teams Hall Endurance Rankings</h1>
+    </div>
+    <p style="color: var(--text-muted); margin:0.35rem 0 0;">
+      Official leaderboard ranking all 30 hackathon teams by presence time inside event halls.
+    </p>
+  </div>
+  <div style="display:flex; gap:0.6rem; align-items:center;">
+    <a href="/rankings/csv" class="btn btn-primary" style="padding:0.6rem 1.2rem; font-weight:600; display:inline-flex; align-items:center; gap:0.4rem;">
+      <i class="ph ph-file-csv" style="font-size:1.15rem;"></i> Export Rankings CSV
+    </a>
+    <a href="/analytics/scans/csv" class="btn btn-outline" style="padding:0.6rem 1.1rem; display:inline-flex; align-items:center; gap:0.4rem;">
+      <i class="ph ph-download-simple"></i> All Scans Audit Trail
+    </a>
+  </div>
+</div>
+
+<!-- Podium Section (Top 3 Teams) -->
+{% if team_summaries|length >= 3 %}
+<div class="podium-container">
+  <!-- 2nd Place -->
+  {% set t2 = team_summaries[1] %}
+  <div class="podium-card second">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+      <span class="rank-badge rank-2">🥈</span>
+      <span class="badge badge-{{ t2.status_badge }}">{{ t2.status }}</span>
+    </div>
+    <div style="font-size:0.8rem; color:#64748B; font-weight:700; text-transform:uppercase;">Rank #2 Runner Up</div>
+    <h2 style="margin:0.25rem 0 0.5rem; font-size:1.4rem; color:#1E293B;">{{ t2.team_name }}</h2>
+    <div style="display:flex; justify-content:space-between; align-items:baseline; margin-top:0.5rem;">
+      <span style="font-size:0.85rem; color:#64748B;">Presence:</span>
+      <strong style="font-size:1.35rem; color:#0284C7;">{{ t2.presence_pct }}%</strong>
+    </div>
+    <div class="progress-bar-bg">
+      <div class="progress-bar-fill" style="width:{{ t2.presence_pct }}%; background:#0284C7;"></div>
+    </div>
+    <div style="display:flex; justify-content:space-between; font-size:0.8rem; color:#64748B; margin-top:0.75rem;">
+      <span>Total Hall Time: <strong>{{ t2.total_duration_str }}</strong></span>
+      <span>Inside: <strong>{{ t2.members_in }}/{{ t2.total_members }}</strong></span>
+    </div>
+  </div>
+
+  <!-- 1st Place (Gold Champion) -->
+  {% set t1 = team_summaries[0] %}
+  <div class="podium-card first">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+      <span class="rank-badge rank-1">🥇</span>
+      <span class="badge badge-{{ t1.status_badge }}">{{ t1.status }}</span>
+    </div>
+    <div style="font-size:0.8rem; color:#854D0E; font-weight:700; text-transform:uppercase;">🏆 Rank #1 Leader</div>
+    <h2 style="margin:0.25rem 0 0.5rem; font-size:1.55rem; color:#854D0E;">{{ t1.team_name }}</h2>
+    <div style="display:flex; justify-content:space-between; align-items:baseline; margin-top:0.5rem;">
+      <span style="font-size:0.85rem; color:#854D0E;">Presence:</span>
+      <strong style="font-size:1.55rem; color:#059669;">{{ t1.presence_pct }}%</strong>
+    </div>
+    <div class="progress-bar-bg">
+      <div class="progress-bar-fill" style="width:{{ t1.presence_pct }}%; background:#059669;"></div>
+    </div>
+    <div style="display:flex; justify-content:space-between; font-size:0.8rem; color:#854D0E; margin-top:0.75rem;">
+      <span>Total Hall Time: <strong>{{ t1.total_duration_str }}</strong></span>
+      <span>Inside: <strong>{{ t1.members_in }}/{{ t1.total_members }}</strong></span>
+    </div>
+  </div>
+
+  <!-- 3rd Place -->
+  {% set t3 = team_summaries[2] %}
+  <div class="podium-card third">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+      <span class="rank-badge rank-3">🥉</span>
+      <span class="badge badge-{{ t3.status_badge }}">{{ t3.status }}</span>
+    </div>
+    <div style="font-size:0.8rem; color:#9A3412; font-weight:700; text-transform:uppercase;">Rank #3 Bronze</div>
+    <h2 style="margin:0.25rem 0 0.5rem; font-size:1.4rem; color:#1E293B;">{{ t3.team_name }}</h2>
+    <div style="display:flex; justify-content:space-between; align-items:baseline; margin-top:0.5rem;">
+      <span style="font-size:0.85rem; color:#64748B;">Presence:</span>
+      <strong style="font-size:1.35rem; color:#EA580C;">{{ t3.presence_pct }}%</strong>
+    </div>
+    <div class="progress-bar-bg">
+      <div class="progress-bar-fill" style="width:{{ t3.presence_pct }}%; background:#EA580C;"></div>
+    </div>
+    <div style="display:flex; justify-content:space-between; font-size:0.8rem; color:#64748B; margin-top:0.75rem;">
+      <span>Total Hall Time: <strong>{{ t3.total_duration_str }}</strong></span>
+      <span>Inside: <strong>{{ t3.members_in }}/{{ t3.total_members }}</strong></span>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Full 30 Teams Rankings Table -->
+<div class="card" style="padding:0; overflow:hidden; margin-bottom:2rem;">
+  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; padding:1.25rem 1.5rem; border-bottom:1px solid #E2E8F0; background:#FAFCFF;">
+    <div>
+      <h3 style="margin:0; font-size:1.15rem; display:flex; align-items:center; gap:0.4rem;">
+        📊 30-Team Standing & Member Presence
+      </h3>
+      <p style="color: var(--text-muted); margin:0.2rem 0 0; font-size:0.82rem;">
+        Ranked in descending order by presence inside the hackathon venues.
+      </p>
+    </div>
+    <div style="display:flex; align-items:center; gap:0.75rem;">
+      <input type="text" id="ranking-search" class="form-control" style="width:240px;" placeholder="Search team or member..." />
+      <span style="font-size:0.85rem; color:var(--text-muted); white-space:nowrap;">
+        <strong>{{ team_summaries|length }}</strong> / 30 Teams
+      </span>
+    </div>
+  </div>
+
+  <div style="overflow-x:auto;">
+    <table id="rankings-table">
+      <thead>
+        <tr>
+          <th style="width:65px; text-align:center;">Rank</th>
+          <th>Team Name</th>
+          <th style="text-align:center;">Members Present</th>
+          <th style="min-width:180px;">Presence %</th>
+          <th>Total Time in Hall</th>
+          <th>Squad Status</th>
+          <th>Active Venues</th>
+          <th style="min-width:260px;">Team Member Roster & OUT Times</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in team_summaries %}
+        <tr>
+          <td style="text-align:center;">
+            {% if t.rank == 1 %}
+            <span class="rank-badge rank-1">🥇</span>
+            {% elif t.rank == 2 %}
+            <span class="rank-badge rank-2">🥈</span>
+            {% elif t.rank == 3 %}
+            <span class="rank-badge rank-3">🥉</span>
+            {% else %}
+            <span class="rank-badge rank-other">#{{ t.rank }}</span>
+            {% endif %}
+          </td>
+          <td>
+            <a href="/analytics?team_name={{ t.team_name }}" style="font-weight:700; font-size:1rem; color:var(--primary-blue); text-decoration:none;">
+              {{ t.team_name }}
+            </a>
+          </td>
+          <td style="text-align:center; font-weight:700;">
+            <span style="color:#059669;">{{ t.members_in }}</span> / {{ t.total_members }}
+          </td>
+          <td>
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+              <span style="font-size:0.9rem; font-weight:800; width:45px;">{{ t.presence_pct }}%</span>
+              <div class="progress-bar-bg">
+                <div class="progress-bar-fill" style="width: {{ t.presence_pct }}%;"></div>
+              </div>
+            </div>
+          </td>
+          <td>
+            <strong style="color:#1E293B; font-size:0.95rem;">{{ t.total_duration_str }}</strong>
+          </td>
+          <td>
+            <span class="badge badge-{{ t.status_badge }}">{{ t.status }}</span>
+          </td>
+          <td>
+            {% if t.venues_occupied %}
+              {% for v in t.venues_occupied %}
+                <span class="badge badge-blue" style="margin-right:2px; font-size:0.75rem;">{{ v }}</span>
+              {% endfor %}
+            {% else %}
+              <span style="color:var(--text-muted); font-size:0.8rem;">All Out</span>
+            {% endif %}
+          </td>
+          <td>
+            <!-- Member breakdown with IN status and OUT timestamps -->
+            <div style="display:flex; flex-direction:column; gap:0.3rem;">
+              {% for m in t.members %}
+              <div style="display:flex; align-items:center; justify-content:space-between; font-size:0.8rem; background:#F8FAFC; border:1px solid #E2E8F0; padding:0.25rem 0.5rem; border-radius:6px;">
+                <div style="display:flex; align-items:center; gap:0.35rem;">
+                  <span style="width:7px; height:7px; border-radius:50%; background:{{ '#059669' if m.is_in else '#DC2626' }};"></span>
+                  <strong>{{ m.name }}</strong>
+                  <span style="color:#64748B; font-size:0.75rem;">({{ m.roll_no }})</span>
+                </div>
+                <div style="text-align:right;">
+                  <span style="font-weight:700; color:{{ '#059669' if m.is_in else '#64748B' }};">{{ m.presence_pct }}%</span>
+                  <span style="font-size:0.75rem; margin-left:0.35rem; color:{{ '#059669' if m.is_in else '#DC2626' }};">
+                    {{ m.when_out_short }}
+                  </span>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="8" style="text-align:center; color:var(--text-muted); padding:2rem;">
+            No teams enrolled yet. Register your hackathon teams under <strong>Teams & Participants</strong>.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+// Filter ranking table in real-time
+document.getElementById('ranking-search').addEventListener('keyup', function () {
+  const q = this.value.toLowerCase();
+  document.querySelectorAll('#rankings-table tbody tr').forEach((row) => {
+    row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+});
+</script>
+{% endblock %}

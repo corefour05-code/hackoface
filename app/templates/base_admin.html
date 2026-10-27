@@ -2,16 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>{% block title %}PSNA Dashboard{% endblock %}</title>
+<title>{% block title %}PSNA 24-Hour Hackathon{% endblock %}</title>
 <link rel="stylesheet" href="/static/design-system.css" />
 <script src="https://unpkg.com/@phosphor-icons/web"></script>
 <style>
   .app-shell { display: flex; height: 100vh; overflow: hidden; }
 
   .sidebar {
-    width: 250px;
+    width: 260px;
     flex-shrink: 0;
-    background: var(--primary-blue);
+    background: #0F172A;
     color: rgba(255,255,255,0.9);
     display: flex;
     flex-direction: column;
@@ -22,48 +22,53 @@
     align-items: center;
     gap: 0.6rem;
     padding: 1.25rem 1.5rem;
-    border-bottom: 1px solid rgba(255,255,255,0.15);
-    font-weight: 600;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    font-weight: 700;
     color: var(--white);
+    letter-spacing: 0.02em;
   }
-  .sidebar-header i { font-size: 1.4rem; }
-  .nav-group { margin-top: 1rem; }
+  .sidebar-header i { font-size: 1.5rem; color: #38BDF8; }
+  .nav-group { margin-top: 1.2rem; }
   .nav-group-label {
     padding: 0.4rem 1.5rem;
     font-size: 0.72rem;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: rgba(255,255,255,0.55);
+    letter-spacing: 0.06em;
+    color: rgba(255,255,255,0.45);
+    font-weight: 600;
   }
   .nav-link {
     display: flex;
     align-items: center;
-    gap: 0.6rem;
-    padding: 0.8rem 1.5rem;
-    color: rgba(255,255,255,0.9);
+    gap: 0.75rem;
+    padding: 0.75rem 1.5rem;
+    color: rgba(255,255,255,0.8);
     font-size: 0.9rem;
+    text-decoration: none;
+    transition: all 0.15s ease;
   }
-  .nav-link:hover { background: rgba(255,255,255,0.1); }
-  .nav-link.active { background: rgba(255,255,255,0.16); font-weight: 600; }
+  .nav-link:hover { background: rgba(255,255,255,0.08); color: #fff; }
+  .nav-link.active { background: #0284C7; color: #fff; font-weight: 600; }
+  .nav-link i { font-size: 1.15rem; }
 
-  .main-col { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .main-col { flex: 1; display: flex; flex-direction: column; min-width: 0; background: #F8FAFC; }
   .topbar {
     height: 60px;
     flex-shrink: 0;
     background: var(--white);
-    box-shadow: var(--box-shadow);
+    border-bottom: 1px solid #E2E8F0;
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 0 2rem;
     z-index: 1;
   }
-  .topbar-brand { display: flex; align-items: center; gap: 0.5rem; font-weight: 600; }
-  .topbar-brand i { color: var(--primary-blue); font-size: 1.3rem; }
-  .topbar-right { display: flex; align-items: center; gap: 1rem; font-size: 0.9rem; color: var(--text-muted); }
+  .topbar-brand { display: flex; align-items: center; gap: 0.6rem; font-weight: 700; font-size: 1.05rem; }
+  .topbar-brand i { color: #0284C7; font-size: 1.35rem; }
+  .topbar-right { display: flex; align-items: center; gap: 1.25rem; font-size: 0.9rem; color: var(--text-muted); }
 
   .content-area { flex: 1; overflow-y: auto; }
-  .content-inner { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+  .content-inner { max-width: 1250px; margin: 0 auto; padding: 2rem; }
 </style>
 {% block extra_head %}{% endblock %}
 </head>
@@ -71,56 +76,66 @@
   <div class="app-shell">
     <aside class="sidebar">
       <div class="sidebar-header">
-        <i class="ph ph-shield-check"></i>
-        <span>PSNA Dashboard</span>
+        <i class="ph ph-lightning"></i>
+        <span>PSNA 24h Hackathon</span>
       </div>
 
       <nav>
         <div class="nav-group">
-          <div class="nav-group-label">User Dashboard</div>
+          <div class="nav-group-label">Live Camera</div>
           <a class="nav-link {{ 'active' if active_nav == 'scanner' else '' }}" href="/scanner">
             <i class="ph ph-camera"></i>
-            <span>{{ lab_name or 'All Labs' }} Scanner</span>
+            <span>{{ lab_name or 'Event Venue' }} Scanner</span>
           </a>
         </div>
 
         {% if is_main_admin %}
         <div class="nav-group">
-          <div class="nav-group-label">Analytics</div>
-          <a class="nav-link {{ 'active' if active_nav == 'analytics' else '' }}" href="/analytics"><i class="ph ph-chart-pie"></i><span>Analytics</span></a>
+          <div class="nav-group-label">Analytics & Rankings</div>
+          <a class="nav-link {{ 'active' if active_nav == 'analytics' else '' }}" href="/analytics">
+            <i class="ph ph-chart-line-up"></i>
+            <span>Analytics Dashboard</span>
+          </a>
+          <a class="nav-link {{ 'active' if active_nav == 'rankings' else '' }}" href="/rankings">
+            <i class="ph ph-trophy"></i>
+            <span>Team Rankings (30 Teams)</span>
+          </a>
         </div>
 
         <div class="nav-group">
-          <div class="nav-group-label">Student Controls</div>
-          <a class="nav-link {{ 'active' if active_nav == 'students' else '' }}" href="/students"><i class="ph ph-users"></i><span>Students Info</span></a>
-          <a class="nav-link {{ 'active' if active_nav == 'student_update' else '' }}" href="/students/update"><i class="ph ph-note-pencil"></i><span>Update Student</span></a>
-          <a class="nav-link {{ 'active' if active_nav == 'student_delete' else '' }}" href="/students/delete"><i class="ph ph-trash"></i><span>Delete Student</span></a>
-          <a class="nav-link {{ 'active' if active_nav == 'report' else '' }}" href="/report"><i class="ph ph-flask"></i><span>Lab Report</span></a>
-          <a class="nav-link {{ 'active' if active_nav == 'student_add' else '' }}" href="/students/add"><i class="ph ph-user-plus"></i><span>Add New Student</span></a>
-          <a class="nav-link {{ 'active' if active_nav == 'batch_processing' else '' }}" href="/batch-processing"><i class="ph ph-arrows-clockwise"></i><span>Batch Processing</span></a>
-          <a class="nav-link {{ 'active' if active_nav == 'old_students' else '' }}" href="/old-students"><i class="ph ph-archive"></i><span>Old Students</span></a>
+          <div class="nav-group-label">Teams & Participants</div>
+          <a class="nav-link {{ 'active' if active_nav == 'students' else '' }}" href="/students">
+            <i class="ph ph-users"></i>
+            <span>30 Teams & Members</span>
+          </a>
+          <a class="nav-link {{ 'active' if active_nav == 'student_add' else '' }}" href="/students/add">
+            <i class="ph ph-user-plus"></i>
+            <span>Add Participant</span>
+          </a>
+          <a class="nav-link {{ 'active' if active_nav == 'report' else '' }}" href="/report">
+            <i class="ph ph-file-text"></i>
+            <span>Attendance Reports</span>
+          </a>
         </div>
 
         <div class="nav-group">
-          <div class="nav-group-label">Faculty Controls</div>
-          <a class="nav-link {{ 'active' if active_nav == 'faculty' else '' }}" href="/faculty"><i class="ph ph-users"></i><span>Faculty Info</span></a>
-          <a class="nav-link {{ 'active' if active_nav == 'faculty_update' else '' }}" href="/faculty/update"><i class="ph ph-note-pencil"></i><span>Update Faculty</span></a>
-          <a class="nav-link {{ 'active' if active_nav == 'faculty_delete' else '' }}" href="/faculty/delete"><i class="ph ph-trash"></i><span>Delete Faculty</span></a>
-          <a class="nav-link {{ 'active' if active_nav == 'faculty_add' else '' }}" href="/faculty/add"><i class="ph ph-user-plus"></i><span>Add New Faculty</span></a>
-        </div>
-
-        <div class="nav-group">
-          <div class="nav-group-label">System Config</div>
-          <a class="nav-link {{ 'active' if active_nav == 'labs' else '' }}" href="/labs"><i class="ph ph-flask"></i><span>Manage Labs</span></a>
-          <a class="nav-link {{ 'active' if active_nav == 'lab_security' else '' }}" href="/lab-security"><i class="ph ph-lock"></i><span>Lab Security Config</span></a>
-          <a class="nav-link {{ 'active' if active_nav == 'periods' else '' }}" href="/periods"><i class="ph ph-clock"></i><span>Manage Periods</span></a>
-          <a class="nav-link {{ 'active' if active_nav == 'shutdown_times' else '' }}" href="/shutdown-times"><i class="ph ph-power"></i><span>Manage Shutdown Time</span></a>
-          <a class="nav-link {{ 'active' if active_nav == 'users' else '' }}" href="/users"><i class="ph ph-users-three"></i><span>Manage Users</span></a>
+          <div class="nav-group-label">Event Administration</div>
+          <a class="nav-link {{ 'active' if active_nav == 'labs' else '' }}" href="/labs">
+            <i class="ph ph-buildings"></i>
+            <span>3 Event Venues</span>
+          </a>
+          <a class="nav-link {{ 'active' if active_nav == 'users' else '' }}" href="/users">
+            <i class="ph ph-users-three"></i>
+            <span>Manage Users</span>
+          </a>
         </div>
         {% else %}
         <div class="nav-group">
           <div class="nav-group-label">Reports</div>
-          <a class="nav-link {{ 'active' if active_nav == 'report' else '' }}" href="/report"><i class="ph ph-flask"></i><span>Lab Report</span></a>
+          <a class="nav-link {{ 'active' if active_nav == 'report' else '' }}" href="/report">
+            <i class="ph ph-file-text"></i>
+            <span>Venue Report</span>
+          </a>
         </div>
         {% endif %}
       </nav>
@@ -129,19 +144,21 @@
     <div class="main-col">
       <header class="topbar">
         <div class="topbar-brand">
-          <i class="ph ph-globe"></i>
-          <span>PSNA Lab Attendance System</span>
+          <i class="ph ph-cpu"></i>
+          <span>PSNA IT Department &bull; 24-Hour Hackathon</span>
         </div>
         <div class="topbar-right">
-          <span>Logged in as: {{ (current_user.role if current_user else '') | capitalize }}</span>
-          <a class="btn btn-primary" href="/logout"><i class="ph ph-sign-out"></i>Logout</a>
+          <span>Logged in as: <strong>{{ (current_user.username if current_user else 'Admin') }}</strong></span>
+          <a class="btn btn-secondary" style="padding:0.4rem 0.85rem; font-size:0.85rem;" href="/logout">
+            <i class="ph ph-sign-out"></i> Logout
+          </a>
         </div>
       </header>
 
       <main class="content-area">
         <div class="content-inner">
-          {% if error %}<div class="flash-message error">{{ error }}</div>{% endif %}
-          {% if success %}<div class="flash-message success">{{ success }}</div>{% endif %}
+          {% if error %}<div class="flash-message error" style="margin-bottom:1rem; padding:0.75rem 1rem; border-radius:8px;">{{ error }}</div>{% endif %}
+          {% if success %}<div class="flash-message success" style="margin-bottom:1rem; padding:0.75rem 1rem; border-radius:8px;">{{ success }}</div>{% endif %}
           {% block content %}{% endblock %}
         </div>
       </main>

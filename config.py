@@ -27,7 +27,9 @@ INSIGHTFACE_CTX_ID = -1                # -1 = CPU
 DETECTION_SIZE = (640, 640)            # insightface det_size, input to SCRFD
 
 # --- Camera / frame pipeline ---
+CAMERA_SOURCE = "webcam"               # Client-side native WebRTC laptop camera
 CAMERA_INDEX = 0
+STREAM_FPS = 30
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
 DETECT_EVERY_N_FRAMES = 3              # run detection every Nth frame; reuse last result otherwise
@@ -61,10 +63,11 @@ ENROLLMENT_ANGLE_LABELS = ["center", "left", "right", "up", "down"]
 BLUR_LAPLACIAN_VAR_THRESHOLD = 80.0    # below this variance, image is considered too blurry
 
 # --- Attendance dedup ---
-# A rescan within this window is treated as accidental and just re-confirms current
-# status; a rescan after this window toggles IN->OUT (or starts a fresh IN if they
-# were already OUT).
-DEDUP_WINDOW_MINUTES = 1
+# Rapid re-scan toggle window (in seconds). A scan within this threshold re-confirms current status
+# without rapid double-flipping; a scan after 5 seconds toggles IN <-> OUT smoothly.
+# Every scan is also recorded into scan_logs for duplicate & full audit data.
+DEDUP_WINDOW_SECONDS = 5
+DEDUP_WINDOW_MINUTES = 0.1
 
 # --- Web app auth ---
 ATTENDANCE_PASSCODE = "attendance123"  # gate before the scanner login (Page 5)

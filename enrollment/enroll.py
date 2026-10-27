@@ -31,39 +31,37 @@ from core.face_engine import get_face_app
 from db.connection import get_connection
 from enrollment.validation import validate_capture
 
-ROLL_NO_PATTERN = re.compile(r"^\d+[a-z]+\d+$")
+ROLL_NO_PATTERN = re.compile(r"^[a-zA-Z0-9_\-]+$")
 WINDOW_NAME = "Enrollment - SPACE=capture  ESC=cancel"
 
 
 def validate_roll_no(roll_no: str) -> str:
-    roll_no = roll_no.strip().lower()
+    roll_no = roll_no.strip()
     if not ROLL_NO_PATTERN.match(roll_no):
         raise ValueError(
-            f"roll_no '{roll_no}' doesn't match expected format "
-            "(digits, then letters, then digits - e.g. 23it112 or 25itle123)"
+            f"ID '{roll_no}' contains invalid characters (letters, numbers, hyphens and underscores allowed)"
         )
     return roll_no
 
 
-def upsert_student(conn, roll_no: str, name: str, year: int, department: str) -> None:
-    """Insert or update a student. Also clears archived_at — (re-)enrolling
-    someone is always meant to make them active, including restoring a
-    previously archived roll number."""
+def upsert_student(conn, roll_no: str, name: str, team_name: str | None = None, photo_path: str | None = None, **kwargs) -> None:
+    """Insert or update a hackathon participant."""
+    team = team_name or "Unassigned"
     existing = conn.execute("SELECT roll_no FROM students WHERE roll_no=?", (roll_no,)).fetchone()
     if existing:
         conn.execute(
-            "UPDATE students SET name=?, year=?, department=?, archived_at=NULL WHERE roll_no=?",
-            (name, year, department, roll_no),
+            "UPDATE students SET name=?, team_name=?, photo_path=COALESCE(?, photo_path) WHERE roll_no=?",
+            (name, team, photo_path, roll_no),
         )
     else:
         conn.execute(
-            "INSERT INTO students (roll_no, name, year, department) VALUES (?,?,?,?)",
-            (roll_no, name, year, department),
+            "INSERT INTO students (roll_no, name, team_name, photo_path) VALUES (?,?,?,?)",
+            (roll_no, name, team, photo_path),
         )
     conn.commit()
 
 
-def run_enrollment(roll_no: str, name: str, year: int, department: str) -> bool:
+def run_enrollment(roll_no: str, name: str, year: int = 1, department: str = "IT", team_name: str | None = None) -> bool:
     app = get_face_app()
 
     cap = cv2.VideoCapture(CAMERA_INDEX)
@@ -137,7 +135,7 @@ def run_enrollment(roll_no: str, name: str, year: int, department: str) -> bool:
 
     conn = get_connection()
     try:
-        upsert_student(conn, roll_no, name, year, department)
+        upsert_student(conn, roll_no, name, year, department, team_name)
         for angle_label, embedding, _photo_path, _sharpness in captured:
             conn.execute(
                 "INSERT INTO embeddings (roll_no, embedding, angle_label) VALUES (?,?,?)",
@@ -147,16 +145,17 @@ def run_enrollment(roll_no: str, name: str, year: int, department: str) -> bool:
     finally:
         conn.close()
 
-    print(f"Enrolled {roll_no} ({name}) with {len(captured)} embeddings.")
+    print(f"Enrolled {roll_no} ({name}, Team: {team_name or 'N/A'}) with {len(captured)} embeddings.")
     return True
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Enroll a student for face recognition attendance")
-    parser.add_argument("--roll_no", required=True, help="e.g. 23it112")
+    parser = argparse.ArgumentParser(description="Enroll a participant for face recognition attendance")
+    parser.add_argument("--roll_no", required=True, help="e.g. 23it112 or P101")
     parser.add_argument("--name", required=True)
-    parser.add_argument("--year", type=int, required=True, choices=[1, 2, 3, 4])
-    parser.add_argument("--department", required=True)
+    parser.add_argument("--team_name", default=None, help="Team name")
+    parser.add_argument("--year", type=int, default=1, choices=[1, 2, 3, 4])
+    parser.add_argument("--department", default="IT")
     args = parser.parse_args()
 
     try:
@@ -165,7 +164,7 @@ def main() -> None:
         print(f"ERROR: {e}")
         sys.exit(1)
 
-    run_enrollment(roll_no, args.name.strip(), args.year, args.department.strip())
+    run_enrollment(roll_no, args.name.strip(), args.year, args.department.strip(), args.team_name)
 
 
 if __name__ == "__main__":

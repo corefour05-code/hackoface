@@ -40,14 +40,10 @@ class FaceRecognizer:
         conn = get_connection()
         try:
             student_rows = conn.execute("SELECT roll_no AS id, embedding FROM embeddings").fetchall()
-            faculty_rows = conn.execute(
-                "SELECT fe.faculty_id AS id, fe.embedding AS embedding, f.role AS role "
-                "FROM faculty_embeddings fe JOIN faculty f ON f.faculty_id = fe.faculty_id"
-            ).fetchall()
         finally:
             conn.close()
 
-        rows = [("student", r, None) for r in student_rows] + [("faculty", r, r["role"]) for r in faculty_rows]
+        rows = [("student", r, None) for r in student_rows]
 
         if not rows:
             self.identities = []

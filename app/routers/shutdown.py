@@ -56,13 +56,13 @@ def run_due_shutdowns() -> None:
         for row in due:
             cur_students = conn.execute(
                 "UPDATE attendance SET out_time=?, out_date=?, out_period_id=? "
-                "WHERE session_date=? AND out_time IS NULL",
-                (now_iso, today, period_id, today),
+                "WHERE out_time IS NULL",
+                (now_iso, today, period_id),
             )
             cur_faculty = conn.execute(
                 "UPDATE faculty_attendance SET out_time=?, out_date=?, out_period_id=? "
-                "WHERE session_date=? AND out_time IS NULL",
-                (now_iso, today, period_id, today),
+                "WHERE out_time IS NULL",
+                (now_iso, today, period_id),
             )
             conn.execute(
                 "UPDATE shutdown_times SET last_triggered_date=? WHERE id=?", (today, row["id"])

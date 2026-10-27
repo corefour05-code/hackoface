@@ -1,74 +1,119 @@
 {% extends "base_admin.html" %}
-{% block title %}Students Info{% endblock %}
+{% block title %}Hackathon Teams & Participants{% endblock %}
 {% block content %}
-<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1.5rem;">
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem;">
   <div>
-    <h1 style="margin-bottom:0.25rem;">Students Info</h1>
-    <p style="color: var(--text-muted); margin:0;">View all registered students in the system.</p>
+    <h1 style="margin-bottom:0.25rem;">Hackathon Teams & Participants</h1>
+    <p style="color: var(--text-muted); margin:0;">
+      Manage the 30 teams and their members (maximum 4 members per team).
+    </p>
   </div>
-  <a class="btn btn-primary" href="/students/add"><i class="ph ph-user-plus"></i>Add New Student</a>
+  <a class="btn btn-primary" href="/students/add"><i class="ph ph-user-plus"></i>Add Participant</a>
 </div>
 
-{% if intent %}
-<div class="flash-message" style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; margin-bottom:1rem;">
-  {% if intent == 'delete' %}Click the <i class="ph ph-trash"></i> icon next to a student below to delete their record.{% endif %}
+{% if success %}
+<div class="flash-message" style="background:#ECFDF5; color:#065F46; border:1px solid #A7F3D0; margin-bottom:1rem; padding:0.75rem 1rem; border-radius:8px;">
+  {{ success }}
+</div>
+{% endif %}
+{% if error %}
+<div class="flash-message" style="background:#FEF2F2; color:#991B1B; border:1px solid #FECACA; margin-bottom:1rem; padding:0.75rem 1rem; border-radius:8px;">
+  {{ error }}
 </div>
 {% endif %}
 
+<!-- Filter & Search Bar -->
 <div class="card" style="background:#F8FAFC; border:1px solid #e2e8f0; margin-bottom:1.5rem;">
   <form method="get" action="{{ list_path or '/students' }}" style="display:flex; gap:0.75rem; align-items:flex-end; flex-wrap:wrap;">
-    <label style="margin:0;">Section
-      <select name="section" class="form-control" onchange="this.form.submit()">
-        <option value="">All Sections</option>
-        {% for s in sections %}
-        <option value="{{ s }}" {{ 'selected' if s == section else '' }}>{{ s }}</option>
+    <label style="margin:0; font-weight:600; font-size:0.85rem;">Filter by Team
+      <select name="team_name" class="form-control" onchange="this.form.submit()" style="min-width:200px;">
+        <option value="">All Teams ({{ teams | length }}/30)</option>
+        {% for t in teams %}
+        <option value="{{ t }}" {{ 'selected' if t == team_name else '' }}>
+          {{ t }} ({{ team_member_counts.get(t, 0) }}/4)
+        </option>
         {% endfor %}
       </select>
     </label>
-    <label style="margin:0;">Year
-      <select name="year" class="form-control" onchange="this.form.submit()">
-        <option value="">All Years</option>
-        {% for y in [1,2,3,4] %}
-        <option value="{{ y }}" {{ 'selected' if year == y|string else '' }}>{{ y }}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <label style="flex-grow:1; margin:0;">Search Student (Name or ID)
-      <input type="text" id="search-input" name="q" value="{{ q or '' }}" class="form-control" placeholder="e.g. Nivi or 23it112" />
+    <label style="flex-grow:1; margin:0; font-weight:600; font-size:0.85rem;">Search (Name, ID, or Team)
+      <input type="text" id="search-input" name="q" value="{{ q or '' }}" class="form-control" placeholder="Search participant name, roll number, or team name..." />
     </label>
     <button type="submit" class="btn btn-primary">SEARCH</button>
     <a class="btn btn-outline" href="{{ list_path or '/students' }}">RESET</a>
   </form>
 </div>
 
-<div class="card" style="margin-bottom:1.5rem; padding:1rem 1.5rem;">
-  <strong id="student-count" style="font-size:1.4rem; color:var(--primary-blue);">{{ student_count }}</strong>
-  <span style="color:var(--text-muted); font-size:0.85rem;">student{{ '' if student_count == 1 else 's' }}</span>
+<!-- Stats -->
+<div class="card" style="margin-bottom:1.5rem; padding:1rem 1.5rem; display:flex; gap:2.5rem; align-items:center; flex-wrap:wrap;">
+  <div>
+    <strong id="student-count" style="font-size:1.6rem; color:var(--primary-blue);">{{ student_count }}</strong>
+    <div style="color:var(--text-muted); font-size:0.8rem; font-weight:500;">Enrolled Participants</div>
+  </div>
+  <div>
+    <strong style="font-size:1.6rem; color:#1E293B;">{{ teams|length }} / 30</strong>
+    <div style="color:var(--text-muted); font-size:0.8rem; font-weight:500;">Teams Registered</div>
+  </div>
+  <div>
+    <strong style="font-size:1.6rem; color:#00695C;">4</strong>
+    <div style="color:var(--text-muted); font-size:0.8rem; font-weight:500;">Max Members / Team</div>
+  </div>
 </div>
 
+<!-- Participants Table -->
 <div class="card" style="padding:0; overflow:hidden;">
   <table id="students-table">
     <thead>
       <tr>
-        <th>Registration ID</th><th>Name</th><th>Batch</th>
-        <th>Year</th><th>Section</th><th>Action</th>
+        <th>Participant ID</th>
+        <th>Full Name</th>
+        <th>Team Name</th>
+        <th>Team Capacity</th>
+        <th>Face Photos</th>
+        <th style="text-align:right;">Actions</th>
       </tr>
     </thead>
     <tbody>
       {% for s in students %}
       <tr>
-        <td>{{ s.roll_no }}</td>
-        <td>{{ s.name }}</td>
-        <td>{{ s.batch or '-' }}</td>
-        <td>{{ s.year }}</td>
-        <td>{{ s.section or '-' }}</td>
+        <td><strong style="color:var(--primary-blue);">{{ s.roll_no }}</strong></td>
+        <td style="font-weight:600;">{{ s.name }}</td>
         <td>
-          <a class="btn btn-outline" style="padding:0.35rem 0.6rem;" href="/students/{{ s.roll_no }}/edit"><i class="ph ph-note-pencil"></i></a>
-          <button class="btn btn-danger" style="padding:0.35rem 0.6rem;" onclick="deleteStudent('{{ s.roll_no }}')"><i class="ph ph-trash"></i></button>
+          <a href="/students?team_name={{ s.team_name }}" style="text-decoration:none;">
+            <span class="badge badge-blue" style="font-size:0.85rem; padding:0.25rem 0.6rem;">
+              {{ s.team_name or 'Unassigned' }}
+            </span>
+          </a>
+        </td>
+        <td>
+          {% set mem_count = team_member_counts.get(s.team_name, 1) %}
+          <span class="badge {{ 'badge-teal' if mem_count == 4 else 'badge-indigo' }}" style="font-size:0.75rem;">
+            {{ mem_count }}/4 members
+          </span>
+        </td>
+        <td>
+          {% if s.embedding_count and s.embedding_count > 0 %}
+          <span class="badge badge-teal" style="font-size:0.75rem;">
+            <i class="ph ph-check"></i> {{ s.embedding_count }} Encodings
+          </span>
+          {% else %}
+          <span class="badge badge-red" style="font-size:0.75rem;">No Photos</span>
+          {% endif %}
+        </td>
+        <td style="text-align:right;">
+          <a class="btn btn-outline" style="padding:0.35rem 0.6rem;" href="/students/{{ s.roll_no }}/edit" title="Edit Participant">
+            <i class="ph ph-note-pencil"></i>
+          </a>
+          <button class="btn btn-danger" style="padding:0.35rem 0.6rem;" onclick="deleteStudent('{{ s.roll_no }}')" title="Delete Participant">
+            <i class="ph ph-trash"></i>
+          </button>
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="6" style="text-align:center; color:var(--text-muted); padding:2rem;">No students registered yet.</td></tr>
+      <tr>
+        <td colspan="6" style="text-align:center; color:var(--text-muted); padding:2.5rem;">
+          No participants registered yet. Click <strong>"Add Participant"</strong> above to register teams.
+        </td>
+      </tr>
       {% endfor %}
     </tbody>
   </table>
@@ -79,7 +124,7 @@ document.getElementById('search-input').addEventListener('keyup', function () {
   const q = this.value.toLowerCase();
   let visible = 0;
   document.querySelectorAll('#students-table tbody tr').forEach((row) => {
-    if (row.cells.length < 6) return; // "no students" placeholder row
+    if (row.cells.length < 6) return;
     const text = row.textContent.toLowerCase();
     const match = text.includes(q);
     row.style.display = match ? '' : 'none';
@@ -89,12 +134,12 @@ document.getElementById('search-input').addEventListener('keyup', function () {
 });
 
 async function deleteStudent(rollNo) {
-  if (!confirm(`Permanently delete student ${rollNo}? This removes their record, face data, and attendance history from the database. This cannot be undone.`)) return;
+  if (!confirm(`Permanently delete participant ${rollNo}? This removes their face encodings and attendance history.`)) return;
   const res = await fetch(`/students/${rollNo}`, { method: 'DELETE' });
   if (res.ok) {
     location.reload();
   } else {
-    alert('Failed to delete student.');
+    alert('Failed to delete participant.');
   }
 }
 </script>

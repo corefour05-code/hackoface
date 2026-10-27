@@ -1,5 +1,5 @@
 {% extends "base_admin.html" %}
-{% block title %}Analytics{% endblock %}
+{% block title %}24-Hour Hackathon Analytics & Leaderboard{% endblock %}
 {% block extra_head %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
@@ -107,19 +107,132 @@
     cursor: pointer;
   }
   .dev-back-link:hover { color: var(--primary-blue); }
+
+  /* Hackathon Event Timer Banner */
+  .timer-banner {
+    background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+    color: #F8FAFC;
+    border-radius: 12px;
+    padding: 1.5rem 1.75rem;
+    margin-bottom: 1.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.25rem;
+    box-shadow: 0 4px 15px rgba(15, 23, 42, 0.15);
+  }
+  .timer-clock {
+    font-family: 'SF Mono', 'Courier New', Courier, monospace;
+    font-size: 2.1rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: #38BDF8;
+  }
+  .rank-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    font-weight: 700;
+    font-size: 0.85rem;
+  }
+  .rank-1 { background: #FEF08A; color: #854D0E; border: 2px solid #EAB308; }
+  .rank-2 { background: #E2E8F0; color: #475569; border: 2px solid #94A3B8; }
+  .rank-3 { background: #FFEDD5; color: #9A3412; border: 2px solid #F97316; }
+  .rank-other { background: #F1F5F9; color: #64748B; }
+
+  .stat-card {
+    background: #fff;
+    border: 1px solid #E2E8F0;
+    border-radius: 10px;
+    padding: 1.25rem;
+    flex: 1 1 180px;
+    min-width: 170px;
+  }
+  .progress-bar-bg {
+    background: #E2E8F0;
+    border-radius: 999px;
+    height: 8px;
+    width: 100%;
+    overflow: hidden;
+    margin-top: 4px;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    background: #00695C;
+    border-radius: 999px;
+  }
 </style>
 {% endblock %}
 {% block content %}
-<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1.5rem;">
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1.25rem;">
   <div>
-    <h1 style="margin-bottom:0.25rem;">Analytics</h1>
+    <h1 style="margin-bottom:0.25rem;">24-Hour Hackathon Analytics</h1>
     <p style="color: var(--text-muted); margin:0;">
-      Scheduled lab classes vs individual/project attendance, detected from actual scan data.
+      Real-time team presence percentages, Hall Endurance Leaderboard, and multi-venue tracking for PSNA IT Department.
     </p>
   </div>
   <button type="button" class="dev-link" onclick="document.getElementById('dev-modal').classList.add('open')">Developers</button>
 </div>
 
+<!-- Master Event Timer Banner -->
+<div class="timer-banner">
+  <div>
+    <div style="display:flex; align-items:center; gap:0.6rem; margin-bottom:0.35rem;">
+      <span style="font-size:0.8rem; text-transform:uppercase; letter-spacing:0.05em; font-weight:600; color:#94A3B8;">
+        {{ timer.event_name }}
+      </span>
+      {% if timer.is_active %}
+      <span style="display:inline-flex; align-items:center; gap:0.3rem; background:rgba(16, 185, 129, 0.2); color:#34D399; padding:0.15rem 0.5rem; border-radius:999px; font-size:0.75rem; font-weight:600;">
+        <span style="width:6px; height:6px; border-radius:50%; background:#34D399; animation:pulse 1.5s infinite;"></span>
+        EVENT RUNNING
+      </span>
+      {% elif timer.has_started %}
+      <span style="background:rgba(245, 158, 11, 0.2); color:#FBBF24; padding:0.15rem 0.5rem; border-radius:999px; font-size:0.75rem; font-weight:600;">
+        EVENT PAUSED
+      </span>
+      {% else %}
+      <span style="background:rgba(148, 163, 184, 0.2); color:#CBD5E1; padding:0.15rem 0.5rem; border-radius:999px; font-size:0.75rem; font-weight:600;">
+        NOT STARTED
+      </span>
+      {% endif %}
+    </div>
+    <div class="timer-clock" id="live-timer-clock">{{ timer.elapsed_str }}</div>
+    <div style="font-size:0.82rem; color:#94A3B8; margin-top:0.25rem;">
+      {{ timer.remaining_str }} remaining of 24-Hour window ({{ timer.progress_pct }}% elapsed)
+    </div>
+  </div>
+
+  <!-- Timer Controls -->
+  <div style="display:flex; gap:0.6rem; align-items:center; flex-wrap:wrap;">
+    {% if not timer.is_active %}
+    <form method="post" action="/api/event-timer/start" style="margin:0;">
+      <button type="submit" class="btn btn-primary" style="background:#059669; border-color:#059669; font-weight:600; padding:0.6rem 1.25rem;">
+        <i class="ph ph-play"></i> {{ 'RESUME TIMER' if timer.has_started else 'START 24H HACKATHON' }}
+      </button>
+    </form>
+    {% else %}
+    <form method="post" action="/api/event-timer/pause" style="margin:0;">
+      <button type="submit" class="btn btn-secondary" style="background:#D97706; color:#fff; border-color:#D97706; font-weight:600; padding:0.6rem 1.25rem;">
+        <i class="ph ph-pause"></i> PAUSE TIMER
+      </button>
+    </form>
+    {% endif %}
+
+    {% if timer.has_started %}
+    <form method="post" action="/api/event-timer/reset" onsubmit="return confirm('Reset the 24-hour event timer back to 0?');" style="margin:0;">
+      <button type="submit" class="btn btn-outline" style="border-color:#64748B; color:#CBD5E1; padding:0.6rem 1rem;">
+        <i class="ph ph-arrows-counter-clockwise"></i> Reset
+      </button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Developers Modal -->
 <div class="dev-modal-overlay" id="dev-modal" onclick="if (event.target === this) closeDevModal()">
   <div class="dev-modal-panel">
     <div id="dev-grid-view">
@@ -156,233 +269,545 @@
   </div>
 </div>
 
+<!-- Overall IN and OUT with Percentage KPI Cards -->
+<div style="display:flex; flex-wrap:wrap; gap:1rem; margin-bottom:1.5rem;">
+  <div class="stat-card">
+    <div style="color:var(--text-muted); font-size:0.8rem; font-weight:600; text-transform:uppercase;">Total Enrolled</div>
+    <div style="font-size:1.85rem; font-weight:700; color:#1E293B; margin-top:0.2rem;">{{ total_participants }}</div>
+    <div style="color:var(--text-muted); font-size:0.75rem; margin-top:0.2rem;">Across {{ total_teams }} / 30 teams</div>
+  </div>
+
+  <div class="stat-card" style="border-left: 4px solid #00695C;">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <div style="color:#00695C; font-size:0.8rem; font-weight:600; text-transform:uppercase;">Overall IN Halls</div>
+      <span class="badge badge-teal" style="font-size:0.85rem; font-weight:700;">{{ overall_in_pct }}%</span>
+    </div>
+    <div style="font-size:1.85rem; font-weight:700; color:#00695C; margin-top:0.2rem;">{{ total_currently_in }}</div>
+    <div style="color:var(--text-muted); font-size:0.75rem; margin-top:0.2rem;">Present inside event halls</div>
+  </div>
+
+  <div class="stat-card" style="border-left: 4px solid #64748B;">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <div style="color:#64748B; font-size:0.8rem; font-weight:600; text-transform:uppercase;">Overall OUT Halls</div>
+      <span class="badge badge-grey" style="font-size:0.85rem; font-weight:700;">{{ overall_out_pct }}%</span>
+    </div>
+    <div style="font-size:1.85rem; font-weight:700; color:#64748B; margin-top:0.2rem;">{{ total_currently_out }}</div>
+    <div style="color:var(--text-muted); font-size:0.75rem; margin-top:0.2rem;">Outside venue perimeter</div>
+  </div>
+
+  <div class="stat-card">
+    <div style="color:var(--text-muted); font-size:0.8rem; font-weight:600; text-transform:uppercase;">Active Venues</div>
+    <div style="font-size:1.85rem; font-weight:700; color:var(--primary-blue); margin-top:0.2rem;">{{ labs | length }}</div>
+    <div style="color:var(--text-muted); font-size:0.75rem; margin-top:0.2rem;">Editable Event Halls</div>
+  </div>
+</div>
+
+<!-- Filter Bar -->
 <div class="card" style="background:#F8FAFC; border:1px solid #e2e8f0; margin-bottom:1.5rem;">
   <form method="get" action="/analytics" style="display:flex; gap:0.75rem; align-items:flex-end; flex-wrap:wrap;">
-    <label style="margin:0;">From Date
-      <input type="date" name="from_date" class="form-control" value="{{ from_date }}" />
+    <label style="margin:0; font-size:0.85rem; font-weight:600;">Filter by Team Name
+      <select name="team_name" class="form-control" style="min-width:200px;">
+        <option value="">All 30 Teams</option>
+        {% for t in teams %}
+        <option value="{{ t }}" {{ 'selected' if t == selected_team else '' }}>{{ t }}</option>
+        {% endfor %}
+      </select>
     </label>
-    <label style="margin:0;">To Date
-      <input type="date" name="to_date" class="form-control" value="{{ to_date }}" />
-    </label>
-    <label style="margin:0;">Laboratory
-      <select name="lab_id" class="form-control">
-        <option value="">All Laboratories</option>
+
+    <label style="margin:0; font-size:0.85rem; font-weight:600;">Venue / Hall
+      <select name="lab_id" class="form-control" style="min-width:160px;">
+        <option value="">All 3 Venues</option>
         {% for lab in labs %}
         <option value="{{ lab.id }}" {{ 'selected' if lab.id == selected_lab_id else '' }}>{{ lab.name }}</option>
         {% endfor %}
       </select>
     </label>
-    <label style="margin:0;">Class Threshold
-      <input type="number" name="threshold" min="1" class="form-control" style="width:100px;" value="{{ threshold }}" />
+
+    <label style="margin:0; font-size:0.85rem; font-weight:600;">Status
+      <select name="status" class="form-control" style="min-width:130px;">
+        <option value="all" {{ 'selected' if selected_status == 'all' else '' }}>All</option>
+        <option value="in" {{ 'selected' if selected_status == 'in' else '' }}>Currently IN</option>
+        <option value="out" {{ 'selected' if selected_status == 'out' else '' }}>Currently OUT</option>
+      </select>
     </label>
-    <button type="submit" class="btn btn-primary">APPLY</button>
+
+    <label style="margin:0; font-size:0.85rem; font-weight:600;">Search Participant / ID
+      <input type="text" name="q" class="form-control" placeholder="Search name or ID..." value="{{ q }}" style="min-width:170px;" />
+    </label>
+
+    <div style="display:flex; gap:0.5rem;">
+      <button type="submit" class="btn btn-primary" style="padding:0.55rem 1.25rem;">APPLY</button>
+      {% if selected_team or selected_lab_id or selected_status != 'all' or q %}
+      <a href="/analytics" class="btn btn-secondary" style="padding:0.55rem 1rem; text-decoration:none;">Reset</a>
+      {% endif %}
+    </div>
   </form>
 </div>
 
-<div class="card" style="margin-bottom:1.5rem;">
-  <div style="display:flex; flex-wrap:wrap; gap:1.75rem;">
+<!-- Selected Team Spotlight Card (if team is filtered) -->
+{% if selected_team and team_summaries|length > 0 %}
+{% set st = team_summaries[0] %}
+<div class="card" style="border: 2px solid #0284C7; background: #F0F9FF; margin-bottom: 1.5rem; padding: 1.5rem;">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:1rem; margin-bottom:1.25rem;">
     <div>
-      <strong style="font-size:1.4rem; color:var(--primary-blue);">{{ total_class }}</strong>
-      <div style="color:var(--text-muted); font-size:0.8rem;">Class Attendance</div>
+      <span style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; font-weight:700; color:#0369A1;">Filtered Team Spotlight</span>
+      <h2 style="margin:0.2rem 0; color:#0C4A6E;">{{ st.team_name }}</h2>
+      <div style="display:flex; gap:0.5rem; align-items:center; margin-top:0.4rem;">
+        <span class="badge badge-{{ st.status_badge }}" style="font-size:0.85rem; font-weight:600;">{{ st.status }}</span>
+        <span style="font-size:0.85rem; color:#475569;">&bull; Leaderboard Rank: <strong>#{{ st.rank }}</strong></span>
+        {% if st.venues_occupied %}
+          <span style="font-size:0.85rem; color:#475569;">&bull; Venues: <strong>{{ st.venues_occupied | join(', ') }}</strong></span>
+        {% endif %}
+      </div>
     </div>
-    <div>
-      <strong style="font-size:1.4rem;">{{ total_individual }}</strong>
-      <div style="color:var(--text-muted); font-size:0.8rem;">Individual / Project</div>
+    <div style="display:flex; gap:2rem; align-items:center;">
+      <div style="text-align:right;">
+        <div style="font-size:0.75rem; color:#0369A1; font-weight:600; text-transform:uppercase;">Team Presence %</div>
+        <div style="font-size:2rem; font-weight:800; color:#0369A1;">{{ st.presence_pct }}%</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:0.75rem; color:#475569; font-weight:600; text-transform:uppercase;">Total Hall Time</div>
+        <div style="font-size:2rem; font-weight:800; color:#1E293B;">{{ st.total_duration_str }}</div>
+      </div>
     </div>
-    <div>
-      <strong style="font-size:1.4rem;">{{ detected_classes | length }}</strong>
-      <div style="color:var(--text-muted); font-size:0.8rem;">Detected Classes</div>
-    </div>
-    <div>
-      <strong style="font-size:1.4rem;">{{ faculty_count }}</strong>
-      <div style="color:var(--text-muted); font-size:0.8rem;">Faculty Attendance</div>
+  </div>
+
+  <!-- Squad Member Analysis (Every Person in the Team with % and When OUT) -->
+  <div style="background:#fff; border-radius:10px; border:1px solid #BAE6FD; padding:1.25rem;">
+    <h4 style="margin:0 0 0.85rem; font-size:0.95rem; color:#0369A1; display:flex; align-items:center; gap:0.4rem;">
+      <i class="ph ph-users-three"></i> Squad Member Breakdown & When They Are OUT
+    </h4>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:1rem;">
+      {% for m in st.members %}
+      <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:1rem; border-left:4px solid {{ '#059669' if m.is_in else '#DC2626' }};">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+          <div>
+            <strong style="color:#0F172A; font-size:0.95rem;">{{ m.name }}</strong>
+            <div style="font-size:0.78rem; color:#64748B;">ID: {{ m.roll_no }}</div>
+          </div>
+          <span class="badge {{ 'badge-teal' if m.is_in else 'badge-danger' }}" style="font-size:0.75rem;">
+            {{ 'IN HALL' if m.is_in else 'OUT' }}
+          </span>
+        </div>
+
+        <div style="margin-top:0.75rem;">
+          <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:0.25rem;">
+            <span style="color:#64748B;">Presence Inside:</span>
+            <strong style="color:{{ '#059669' if m.is_in else '#64748B' }};">{{ m.presence_pct }}%</strong>
+          </div>
+          <div class="progress-bar-bg" style="height:6px;">
+            <div class="progress-bar-fill" style="width:{{ m.presence_pct }}%; background:{{ '#059669' if m.is_in else '#94A3B8' }};"></div>
+          </div>
+        </div>
+
+        <div style="margin-top:0.75rem; font-size:0.8rem; line-height:1.4;">
+          <div style="display:flex; justify-content:space-between;">
+            <span style="color:#64748B;">Total Inside:</span>
+            <strong>{{ m.total_duration_str }}</strong>
+          </div>
+          <div style="display:flex; justify-content:space-between; margin-top:0.2rem;">
+            <span style="color:#64748B;">Total Outside:</span>
+            <strong style="color:#64748B;">{{ m.total_out_duration_str }}</strong>
+          </div>
+
+          <!-- When OUT / Current Status Indicator -->
+          <div style="margin-top:0.5rem; padding-top:0.5rem; border-top:1px dashed #E2E8F0;">
+            {% if m.is_in %}
+              <div style="color:#059669; font-weight:600;">
+                <i class="ph ph-check-circle" style="vertical-align:middle;"></i> In {{ m.current_venue or 'Venue' }}
+              </div>
+            {% else %}
+              <div style="color:#DC2626; font-weight:600;">
+                <i class="ph ph-sign-out" style="vertical-align:middle;"></i> {{ m.when_out_str }}
+              </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      {% endfor %}
     </div>
   </div>
 </div>
+{% endif %}
 
-<div class="grid-2" style="margin-bottom:1.5rem;">
-  <div class="card">
-    <h3 style="margin-top:0;">Attendance by Class</h3>
-    <canvas id="split-chart" height="220"></canvas>
-  </div>
-  <div class="card" style="padding:0; overflow:hidden;">
-    <h3 style="margin:1.5rem 1.5rem 0;">Class Strength</h3>
-    <p style="color: var(--text-muted); margin:0.25rem 1.5rem 1rem;">
-      Total enrolled vs. present, per year/section, for the selected range.
-    </p>
-    <div style="overflow-x:auto;">
-      <table>
-        <thead><tr><th>Year</th><th>Section</th><th>Period</th><th>Total Strength</th><th>Present</th><th>%</th></tr></thead>
-        <tbody>
-          {% for cs in class_strength %}
-          <tr>
-            <td>Year {{ cs.year }}</td>
-            <td>{{ cs.section }}</td>
-            <td>{{ cs.periods }}</td>
-            <td>{{ cs.total }}</td>
-            <td><strong>{{ cs.present }}</strong></td>
-            <td>{{ cs.percent }}%</td>
-          </tr>
-          {% else %}
-          <tr><td colspan="6" style="text-align:center; color:var(--text-muted); padding:2rem;">No attendance for this range.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-</div>
-
+<!-- Team Hall Endurance Leaderboard -->
 <div class="card" style="padding:0; overflow:hidden; margin-bottom:1.5rem;">
-  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; margin:1.5rem 1.5rem 0;">
-    <h3 style="margin:0;">Faculty in Lab</h3>
-    <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
-      <select id="faculty-period-filter" class="form-control" style="width:180px;">
-        <option value="">All Periods</option>
-        {% for p in faculty_periods %}
-        <option value="{{ p }}">{{ p }}</option>
-        {% endfor %}
-      </select>
-      <input type="text" id="faculty-search" class="form-control" style="width:220px;" placeholder="Search name/ID" />
+  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; padding:1.25rem 1.5rem; border-bottom:1px solid #E2E8F0; background:#FAFCFF;">
+    <div>
+      <h3 style="margin:0; font-size:1.15rem; display:flex; align-items:center; gap:0.4rem;">
+        🏆 Team Hall Endurance Leaderboard
+      </h3>
+      <p style="color: var(--text-muted); margin:0.2rem 0 0; font-size:0.82rem;">
+        Ranking all 30 teams by total time inside event halls and squad presence.
+      </p>
+    </div>
+    <div style="font-size:0.85rem; color:var(--text-muted);">
+      Showing <strong>{{ team_summaries | length }}</strong> teams
     </div>
   </div>
-  <p style="color: var(--text-muted); margin:0.25rem 1.5rem 1rem;">
-    Who was in which lab, during which period, for the selected range. Pick a period above to see just that slot.
-  </p>
-  <div style="overflow-x:auto;">
-    <table id="faculty-table">
-      <thead><tr><th>Date</th><th>Period</th><th>Laboratory</th><th>ID</th><th>Name</th><th>Designation</th><th>In</th><th>Out</th></tr></thead>
-      <tbody>
-        {% for f in faculty_sessions %}
-        <tr data-period="{{ f.period }}">
-          <td>{{ f.date }}</td>
-          <td>{{ f.period }}</td>
-          <td><span class="badge badge-{{ lab_badge_color(f.lab_id) }}">{{ f.lab }}</span></td>
-          <td>{{ f.faculty_id }}</td>
-          <td>{{ f.name }}</td>
-          <td>{{ f.designation or '-' }}{{ (' (' + f.role + ')') if f.role and f.role|lower != 'faculty' else '' }}</td>
-          <td>{{ f.in_time | dt_time12 }}</td>
-          <td>{{ f.out_time | dt_time12 if f.out_time else '-' }}</td>
-        </tr>
-        {% else %}
-        <tr><td colspan="8" style="text-align:center; color:var(--text-muted); padding:2rem;">No faculty attendance for this range.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-
-<div class="card" style="margin-bottom:1.5rem;">
-  <h3 style="margin-top:0;">Attendance by Laboratory</h3>
-  <canvas id="lab-chart" height="120"></canvas>
-</div>
-
-<div class="card" style="padding:0; overflow:hidden; margin-bottom:1.5rem;">
-  <h3 style="margin:1.5rem 1.5rem 0;">Detected Lab Classes</h3>
-  <p style="color: var(--text-muted); margin:0.25rem 1.5rem 1rem;">
-    Groups that cleared the {{ threshold }}-student threshold in a single period + lab.
-  </p>
   <div style="overflow-x:auto;">
     <table>
-      <thead><tr><th>Date</th><th>Period</th><th>Laboratory</th><th>Year</th><th>Section</th><th>Headcount</th></tr></thead>
-      <tbody>
-        {% for c in detected_classes %}
+      <thead>
         <tr>
-          <td>{{ c.date }}</td>
-          <td>{{ c.period }}</td>
-          <td><span class="badge badge-{{ lab_badge_color(c.lab_id) }}">{{ c.lab }}</span></td>
-          <td>{{ c.year }}</td>
-          <td>{{ c.section }}</td>
-          <td><strong>{{ c.count }}</strong></td>
+          <th style="width:50px; text-align:center;">Rank</th>
+          <th>Team Name</th>
+          <th style="text-align:center;">Members (IN / Total)</th>
+          <th>Team Presence %</th>
+          <th>Squad Status</th>
+          <th>Total Time in Hall</th>
+          <th>Venues Active</th>
+          <th style="text-align:right;">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in team_summaries %}
+        <tr style="{{ 'background:#F0F9FF;' if t.team_name == selected_team else '' }}">
+          <td style="text-align:center;">
+            {% if t.rank == 1 %}
+            <span class="rank-badge rank-1">🥇</span>
+            {% elif t.rank == 2 %}
+            <span class="rank-badge rank-2">🥈</span>
+            {% elif t.rank == 3 %}
+            <span class="rank-badge rank-3">🥉</span>
+            {% else %}
+            <span class="rank-badge rank-other">#{{ t.rank }}</span>
+            {% endif %}
+          </td>
+          <td>
+            <a href="/analytics?team_name={{ t.team_name }}" style="font-weight:700; color:var(--primary-blue); text-decoration:none;">
+              {{ t.team_name }}
+            </a>
+          </td>
+          <td style="text-align:center;">
+            <strong>{{ t.members_in }}</strong> / {{ t.total_members }}
+          </td>
+          <td style="min-width:130px;">
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+              <span style="font-size:0.85rem; font-weight:700; width:45px;">{{ t.presence_pct }}%</span>
+              <div class="progress-bar-bg">
+                <div class="progress-bar-fill" style="width: {{ t.presence_pct }}%;"></div>
+              </div>
+            </div>
+          </td>
+          <td>
+            <span class="badge badge-{{ t.status_badge }}">{{ t.status }}</span>
+          </td>
+          <td>
+            <strong style="font-size:0.95rem; color:#1E293B;">{{ t.total_duration_str }}</strong>
+          </td>
+          <td>
+            {% if t.venues_occupied %}
+              {% for v in t.venues_occupied %}
+                <span class="badge badge-blue" style="margin-right:2px; font-size:0.75rem;">{{ v }}</span>
+              {% endfor %}
+            {% else %}
+              <span style="color:var(--text-muted); font-size:0.8rem;">All Out</span>
+            {% endif %}
+          </td>
+          <td style="text-align:right;">
+            <a href="/analytics?team_name={{ t.team_name }}" class="btn btn-secondary" style="padding:0.25rem 0.6rem; font-size:0.75rem; text-decoration:none;">
+              View Team
+            </a>
+          </td>
         </tr>
         {% else %}
-        <tr><td colspan="6" style="text-align:center; color:var(--text-muted); padding:2rem;">No classes detected for this range at the current threshold.</td></tr>
+        <tr>
+          <td colspan="8" style="text-align:center; color:var(--text-muted); padding:2rem;">
+            No teams enrolled yet. Register your hackathon teams under <strong>Teams & Participants</strong>.
+          </td>
+        </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 </div>
 
-<div class="card" style="padding:0; overflow:hidden;">
-  <div style="display:flex; justify-content:space-between; align-items:center; margin:1.5rem 1.5rem 0;">
-    <h3 style="margin:0;">Individual / Project Attendance</h3>
-    <input type="text" id="individual-search" class="form-control" style="width:240px;" placeholder="Search name/ID" />
+<!-- Member Breakdown Table (Person's Percentage) -->
+<div class="card" style="padding:0; overflow:hidden; margin-bottom:1.5rem;">
+  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; padding:1.25rem 1.5rem; border-bottom:1px solid #E2E8F0;">
+    <div>
+      <h3 style="margin:0; font-size:1.15rem;">
+        👤 Member-Wise Presence & Activity Log
+      </h3>
+      <p style="color: var(--text-muted); margin:0.2rem 0 0; font-size:0.82rem;">
+        Individual participants with their personal hall presence percentage, active venue, and duration.
+      </p>
+    </div>
+    <div>
+      <input type="text" id="member-search" class="form-control" style="width:230px;" placeholder="Live search participant..." />
+    </div>
   </div>
-  <p style="color: var(--text-muted); margin:0.25rem 1.5rem 1rem;">
-    Students who scanned in outside any group that cleared the threshold.
-  </p>
   <div style="overflow-x:auto;">
-    <table id="individual-table">
-      <thead><tr><th>Date</th><th>Period</th><th>Laboratory</th><th>ID</th><th>Name</th><th>Year</th><th>Section</th></tr></thead>
-      <tbody>
-        {% for r in individual_rows %}
+    <table id="member-table">
+      <thead>
         <tr>
-          <td>{{ r.date }}</td>
-          <td>{{ r.period }}</td>
-          <td><span class="badge badge-{{ lab_badge_color(r.lab_id) }}">{{ r.lab }}</span></td>
-          <td>{{ r.roll_no }}</td>
-          <td>{{ r.name }}</td>
-          <td>{{ r.year }}</td>
-          <td>{{ r.section }}</td>
+          <th>Participant ID</th>
+          <th>Name</th>
+          <th>Team Name</th>
+          <th>Member Presence %</th>
+          <th>Live Status</th>
+          <th>When OUT / Left At</th>
+          <th>Total Inside</th>
+          <th>Total Outside</th>
+          <th>Latest In</th>
+          <th>Latest Out</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in participants %}
+        <tr>
+          <td><strong style="color:var(--primary-blue);">{{ p.roll_no }}</strong></td>
+          <td style="font-weight:600;">{{ p.name }}</td>
+          <td>
+            <a href="/analytics?team_name={{ p.team_name }}" style="text-decoration:none;">
+              <span class="badge badge-blue">{{ p.team_name }}</span>
+            </a>
+          </td>
+          <td style="min-width:130px;">
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+              <span style="font-size:0.85rem; font-weight:700; width:45px;">{{ p.presence_pct }}%</span>
+              <div class="progress-bar-bg">
+                <div class="progress-bar-fill" style="width: {{ p.presence_pct }}%;"></div>
+              </div>
+            </div>
+          </td>
+          <td>
+            {% if p.is_in %}
+              <span class="badge badge-teal" style="font-weight:700;">IN &bull; {{ p.current_venue or 'Venue' }}</span>
+            {% else %}
+              <span class="badge badge-danger">OUT</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if p.is_in %}
+              <span style="color:#059669; font-weight:600; font-size:0.85rem;">
+                <i class="ph ph-check-circle"></i> Active Inside
+              </span>
+            {% else %}
+              <span style="color:#DC2626; font-weight:600; font-size:0.85rem;">
+                <i class="ph ph-clock-countdown"></i> {{ p.when_out_str }}
+              </span>
+            {% endif %}
+          </td>
+          <td><strong>{{ p.total_duration_str }}</strong></td>
+          <td><span style="color:#64748B;">{{ p.total_out_duration_str }}</span></td>
+          <td>{{ p.in_time_12h or '-' }}</td>
+          <td>{{ p.out_time_12h or '-' }}</td>
         </tr>
         {% else %}
-        <tr><td colspan="7" style="text-align:center; color:var(--text-muted); padding:2rem;">No individual/project attendance for this range.</td></tr>
+        <tr>
+          <td colspan="10" style="text-align:center; color:var(--text-muted); padding:2rem;">
+            No participant attendance records found for this filter.
+          </td>
+        </tr>
         {% endfor %}
       </tbody>
     </table>
+  </div>
+</div>
+
+<!-- Spacious 30-Team Bar Chart (Never Collapsing, All 30 Teams Visible) -->
+<div class="card" style="margin-bottom:1.5rem; padding:1.75rem;">
+  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; margin-bottom:1.25rem;">
+    <div>
+      <h3 style="margin:0; font-size:1.25rem; display:flex; align-items:center; gap:0.5rem;">
+        🏆 30 Teams Hall Endurance Chart (All 30 Teams Without Collapsing)
+      </h3>
+      <p style="color: var(--text-muted); font-size:0.85rem; margin:0.25rem 0 0;">
+        Full spacious horizontal view displaying all 30 hackathon teams with rank, presence percentage, and total endurance time.
+      </p>
+    </div>
+    <div style="display:flex; gap:0.5rem; align-items:center;">
+      <button type="button" id="chart-view-pct-btn" class="btn btn-primary" style="padding:0.4rem 0.85rem; font-size:0.8rem;" onclick="setChartView('pct')">
+        Presence % View
+      </button>
+      <button type="button" id="chart-view-hours-btn" class="btn btn-outline" style="padding:0.4rem 0.85rem; font-size:0.8rem;" onclick="setChartView('hours')">
+        Total Hours Inside View
+      </button>
+    </div>
+  </div>
+
+  <div style="min-height:950px; height:{{ [950, team_labels|length * 36]|max }}px; position:relative;">
+    <canvas id="all-teams-horizontal-chart"></canvas>
+  </div>
+</div>
+
+<!-- Venue Occupancy Distribution -->
+<div class="card" style="margin-bottom:1.5rem;">
+  <h3 style="margin-top:0; font-size:1.1rem; display:flex; align-items:center; gap:0.4rem;">
+    🏢 Live Venue Occupancy Across the 3 Event Halls
+  </h3>
+  <p style="color: var(--text-muted); font-size:0.8rem; margin:0 0 1.25rem;">
+    Real-time participant distribution across the editable event venues.
+  </p>
+  <div style="height:280px; position:relative; display:flex; align-items:center; justify-content:center;">
+    <canvas id="venue-chart"></canvas>
   </div>
 </div>
 
 <script>
-document.getElementById('individual-search').addEventListener('keyup', function () {
+// Live participant table search
+document.getElementById('member-search').addEventListener('keyup', function () {
   const q = this.value.toLowerCase();
-  document.querySelectorAll('#individual-table tbody tr').forEach((row) => {
-    if (!row.cells || row.cells.length < 7) return;
+  document.querySelectorAll('#member-table tbody tr').forEach((row) => {
+    if (!row.cells || row.cells.length < 9) return;
     row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
   });
 });
 
-function filterFacultyTable() {
-  const q = document.getElementById('faculty-search').value.toLowerCase();
-  const period = document.getElementById('faculty-period-filter').value;
-  document.querySelectorAll('#faculty-table tbody tr').forEach((row) => {
-    if (!row.cells || row.cells.length < 8) return;
-    const matchesText = row.textContent.toLowerCase().includes(q);
-    const matchesPeriod = !period || row.dataset.period === period;
-    row.style.display = (matchesText && matchesPeriod) ? '' : 'none';
+// Spacious 30-Team Horizontal Bar Chart (All 30 Teams Clearly Visible)
+const teamLabels = {{ team_labels | tojson }};
+const teamInVals = {{ team_in_vals | tojson }};
+const teamOutVals = {{ team_out_vals | tojson }};
+const teamDurations = {{ team_duration_strs | tojson }};
+const teamInHours = {{ team_in_hours | tojson }};
+
+let teamsBarChart = null;
+let currentChartViewMode = 'pct';
+
+function render30TeamsChart(mode) {
+  currentChartViewMode = mode;
+  const canvasElem = document.getElementById('all-teams-horizontal-chart');
+  if (!canvasElem || teamLabels.length === 0) return;
+
+  if (teamsBarChart) {
+    teamsBarChart.destroy();
+  }
+
+  const isPct = mode === 'pct';
+  const datasets = isPct ? [
+    {
+      label: 'Inside Venue (%)',
+      data: teamInVals,
+      backgroundColor: '#059669',
+      hoverBackgroundColor: '#047857',
+      borderRadius: 6,
+      borderSkipped: false,
+    },
+    {
+      label: 'Outside Venue (%)',
+      data: teamOutVals,
+      backgroundColor: '#E2E8F0',
+      hoverBackgroundColor: '#CBD5E1',
+      borderRadius: 6,
+      borderSkipped: false,
+    }
+  ] : [
+    {
+      label: 'Total Hours Inside Venue (Hours)',
+      data: teamInHours,
+      backgroundColor: '#0284C7',
+      hoverBackgroundColor: '#0369A1',
+      borderRadius: 6,
+      borderSkipped: false,
+    }
+  ];
+
+  teamsBarChart = new Chart(canvasElem, {
+    type: 'bar',
+    data: {
+      labels: teamLabels,
+      datasets: datasets
+    },
+    options: {
+      indexAxis: 'y', // Horizontal bars: gives each of the 30 teams a dedicated readable row!
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'top',
+          labels: { font: { size: 12, weight: '600' } }
+        },
+        tooltip: {
+          callbacks: {
+            label: function (ctx) {
+              const idx = ctx.dataIndex;
+              if (isPct) {
+                if (ctx.datasetIndex === 0) {
+                  return ` Present Inside: ${ctx.parsed.x}% (${teamDurations[idx]} total)`;
+                } else {
+                  return ` Outside Venue: ${ctx.parsed.x}%`;
+                }
+              } else {
+                return ` Total Hall Time: ${teamDurations[idx]} (${ctx.parsed.x} hrs)`;
+              }
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          stacked: isPct,
+          max: isPct ? 100 : undefined,
+          beginAtZero: true,
+          title: {
+            display: true,
+            text: isPct ? 'Percentage of Event Duration (%)' : 'Cumulative Team Hours Inside Hall (Hours)',
+            font: { size: 12, weight: '600' }
+          },
+          ticks: {
+            callback: function (val) {
+              return isPct ? val + '%' : val + 'h';
+            }
+          }
+        },
+        y: {
+          stacked: isPct,
+          ticks: {
+            autoSkip: false, // CRITICAL: NEVER collapse or skip any of the 30 teams!
+            font: { size: 12, weight: '700' },
+            color: '#1E293B'
+          }
+        }
+      }
+    }
   });
 }
-document.getElementById('faculty-search').addEventListener('keyup', filterFacultyTable);
-document.getElementById('faculty-period-filter').addEventListener('change', filterFacultyTable);
 
-const pieLabels = {{ pie_labels | tojson }};
-const pieValues = {{ pie_values | tojson }};
-const classPalette = ['#1565C0', '#00695C', '#6A1B9A', '#283593', '#C62828', '#2E7D32', '#EF6C00', '#00838F'];
-// Every slice is a distinct detected class except the last, which is always
-// "Individual / Project" — keep that one a fixed neutral color so it reads
-// as the "everyone else" bucket rather than just another class.
-const pieColors = pieLabels.map((_, i) => i === pieLabels.length - 1 ? '#8D6E00' : classPalette[i % classPalette.length]);
-new Chart(document.getElementById('split-chart'), {
-  type: 'doughnut',
-  data: {
-    labels: pieLabels,
-    datasets: [{ data: pieValues, backgroundColor: pieColors }],
-  },
-  options: { plugins: { legend: { position: 'bottom' } } },
-});
+function setChartView(mode) {
+  const pctBtn = document.getElementById('chart-view-pct-btn');
+  const hoursBtn = document.getElementById('chart-view-hours-btn');
+  if (mode === 'pct') {
+    pctBtn.className = 'btn btn-primary';
+    hoursBtn.className = 'btn btn-outline';
+  } else {
+    pctBtn.className = 'btn btn-outline';
+    hoursBtn.className = 'btn btn-primary';
+  }
+  render30TeamsChart(mode);
+}
 
-new Chart(document.getElementById('lab-chart'), {
-  type: 'bar',
-  data: {
-    labels: {{ lab_labels | tojson }},
-    datasets: [{ label: 'Attendance', data: {{ lab_values | tojson }}, backgroundColor: '#1565C0' }],
-  },
-  options: {
-    indexAxis: 'y',
-    plugins: { legend: { display: false } },
-    scales: { x: { beginAtZero: true, ticks: { precision: 0 } } },
-  },
-});
+// Initial 30-team chart render
+render30TeamsChart('pct');
 
+// Venue Distribution Chart
+const venueLabels = {{ venue_labels | tojson }};
+const venueVals = {{ venue_vals | tojson }};
+const venueColors = ['#1565C0', '#00695C', '#6A1B9A', '#D97706'];
+
+if (document.getElementById('venue-chart') && venueLabels.length > 0) {
+  new Chart(document.getElementById('venue-chart'), {
+    type: 'doughnut',
+    data: {
+      labels: venueLabels,
+      datasets: [{
+        data: venueVals,
+        backgroundColor: venueColors.slice(0, venueLabels.length),
+        borderWidth: 2,
+        borderColor: '#ffffff'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom' }
+      }
+    }
+  });
+}
+
+// Developer modal functions
 function showDevDetail(name, batch, photoUrl, linkedin) {
   document.getElementById('dev-grid-view').style.display = 'none';
   const detail = document.getElementById('dev-detail-view');
