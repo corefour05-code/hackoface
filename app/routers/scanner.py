@@ -31,16 +31,42 @@ from db.connection import get_connection
 router = APIRouter()
 
 
+# In-memory fast lock cache: (identity, lab_id) -> (status, action_code, lock_expiry_datetime)
+_attendance_lock_cache: dict[tuple[str, int], tuple[str, str, datetime]] = {}
+_student_info_cache: dict[str, tuple[str, str]] = {}
+
+
+def _get_cached_student_info(conn, identity: str) -> tuple[str, str]:
+    if identity in _student_info_cache:
+        return _student_info_cache[identity]
+    row = conn.execute(
+        "SELECT name, COALESCE(team_name, 'No Team') AS team_name FROM students WHERE roll_no=?",
+        (identity,),
+    ).fetchone()
+    if row:
+        info = (row["name"], row["team_name"])
+        _student_info_cache[identity] = info
+        return info
+    return (identity, "No Team")
+
+
 def _toggle_attendance(
     conn, identity: str, lab_id: int, today: str, confidence: float = 0.0
 ) -> tuple[str, bool, str, int]:
-    """24-hour event IN/OUT toggle with mandatory 30-second room stay requirement.
-    A person who enters the room can only mark OUT after 30 seconds have passed.
-    Every detection is recorded into scan_logs for duplicate & audit data.
-    Automatically closes sessions in other venues if participant moves between the 3 halls.
-    Returns: (status, changed, action_code, lock_remaining_seconds)
-    """
+    """24-hour event IN/OUT toggle with mandatory bidirectional 30-second cooldown."""
     now = datetime.now()
+    cache_key = (identity, lab_id)
+
+    # 1. Fast in-memory lock check (bypasses DB disk I/O when participant is locked)
+    cached = _attendance_lock_cache.get(cache_key)
+    if cached is not None:
+        cached_status, cached_action, expiry_dt = cached
+        if now < expiry_dt:
+            remaining = max(1, int((expiry_dt - now).total_seconds()))
+            return cached_status, False, cached_action, remaining
+        else:
+            _attendance_lock_cache.pop(cache_key, None)
+
     now_str = now.isoformat(sep=" ", timespec="seconds")
 
     # If the participant has an unclosed session in ANY other venue, close that session first
@@ -69,17 +95,8 @@ def _toggle_attendance(
         # RULE: Person who enters the room can only come out after 30 seconds!
         if seconds_inside < MIN_ROOM_STAY_SECONDS:
             remaining = max(1, int(MIN_ROOM_STAY_SECONDS - seconds_inside))
-            # Throttle duplicate scan logging to avoid flooding DB with frame-by-frame rows
-            recent_log = conn.execute(
-                "SELECT id FROM scan_logs WHERE roll_no=? AND lab_id=? AND scan_time >= datetime('now', '-30 seconds') LIMIT 1",
-                (identity, lab_id),
-            ).fetchone()
-            if not recent_log:
-                conn.execute(
-                    "INSERT INTO scan_logs (roll_no, lab_id, scan_time, action, confidence, created_date) VALUES (?, ?, ?, 'DUPLICATE_IN', ?, ?)",
-                    (identity, lab_id, now_str, round(confidence, 3), today),
-                )
-                conn.commit()
+            expiry_dt = in_dt + timedelta(seconds=MIN_ROOM_STAY_SECONDS)
+            _attendance_lock_cache[cache_key] = ("in", "locked_inside", expiry_dt)
             return "in", False, "locked_inside", remaining
 
         # 30 seconds have elapsed! Participant marks OUT:
@@ -92,6 +109,8 @@ def _toggle_attendance(
             (identity, lab_id, now_str, round(confidence, 3), today),
         )
         conn.commit()
+        expiry_dt = now + timedelta(seconds=REENTRY_LOCK_SECONDS)
+        _attendance_lock_cache[cache_key] = ("out", "locked_outside", expiry_dt)
         return "out", True, "marked_out", 0
 
     # Participant is currently OUT. Check rapid re-scan buffer after marking OUT:
@@ -107,16 +126,8 @@ def _toggle_attendance(
             # RULE: Person who leaves the room can only come back in after 30 seconds!
             if seconds_outside < REENTRY_LOCK_SECONDS:
                 remaining = max(1, int(REENTRY_LOCK_SECONDS - seconds_outside))
-                recent_log = conn.execute(
-                    "SELECT id FROM scan_logs WHERE roll_no=? AND lab_id=? AND scan_time >= datetime('now', '-30 seconds') LIMIT 1",
-                    (identity, lab_id),
-                ).fetchone()
-                if not recent_log:
-                    conn.execute(
-                        "INSERT INTO scan_logs (roll_no, lab_id, scan_time, action, confidence, created_date) VALUES (?, ?, ?, 'DUPLICATE_OUT', ?, ?)",
-                        (identity, lab_id, now_str, round(confidence, 3), today),
-                    )
-                    conn.commit()
+                expiry_dt = out_dt + timedelta(seconds=REENTRY_LOCK_SECONDS)
+                _attendance_lock_cache[cache_key] = ("out", "locked_outside", expiry_dt)
                 return "out", False, "locked_outside", remaining
         except (ValueError, TypeError):
             pass
@@ -131,6 +142,8 @@ def _toggle_attendance(
         (identity, lab_id, now_str, round(confidence, 3), today),
     )
     conn.commit()
+    expiry_dt = now + timedelta(seconds=MIN_ROOM_STAY_SECONDS)
+    _attendance_lock_cache[cache_key] = ("in", "locked_inside", expiry_dt)
     return "in", True, "marked_in", 0
 
 
@@ -288,7 +301,12 @@ async def scan(request: Request, image: UploadFile = File(...)):
 
     results, _timing = recognizer.recognize(frame)
     if not results:
-        return {"faces": [], "name": None}
+        return {
+            "faces": [],
+            "name": None,
+            "frame_width": int(frame.shape[1]),
+            "frame_height": int(frame.shape[0]),
+        }
 
     # Determine active lab_id
     param_lab = request.query_params.get("lab_id")
@@ -317,35 +335,30 @@ async def scan(request: Request, image: UploadFile = File(...)):
             if not identity or identity == "unknown":
                 continue
 
-            person = conn.execute(
-                "SELECT name, COALESCE(team_name, 'No Team') AS team_name FROM students WHERE roll_no=?",
-                (identity,),
-            ).fetchone()
+            person_name, team_name = _get_cached_student_info(conn, identity)
+            f["name"] = person_name
+            f["team_name"] = team_name
 
-            if person:
-                f["name"] = person["name"]
-                f["team_name"] = person["team_name"]
+            conf = float(f.get("confidence", 0.0))
+            status, changed, action_code, lock_rem = _toggle_attendance(conn, identity, lab_id, today, conf)
+            f["status"] = status
+            f["marked"] = changed
+            f["action_code"] = action_code
+            f["lock_remaining"] = lock_rem
 
-                conf = float(f.get("confidence", 0.0))
-                status, changed, action_code, lock_rem = _toggle_attendance(conn, identity, lab_id, today, conf)
-                f["status"] = status
-                f["marked"] = changed
-                f["action_code"] = action_code
-                f["lock_remaining"] = lock_rem
+            attendee_info = {
+                "name": person_name,
+                "identity": identity,
+                "status": status,
+                "marked": changed,
+                "action_code": action_code,
+                "lock_remaining": lock_rem,
+            }
 
-                attendee_info = {
-                    "name": person["name"],
-                    "identity": identity,
-                    "status": status,
-                    "marked": changed,
-                    "action_code": action_code,
-                    "lock_remaining": lock_rem,
-                }
-
-                if changed:
-                    freshly_marked.append(attendee_info)
-                elif primary is None:
-                    primary = attendee_info
+            if changed:
+                freshly_marked.append(attendee_info)
+            elif primary is None:
+                primary = attendee_info
 
         if freshly_marked:
             primary = freshly_marked[0]
@@ -477,6 +490,7 @@ def scanner_clear(request: Request, password: str = Form(...)):
             (now_str, today, lab_id),
         )
         conn.commit()
+        _attendance_lock_cache.clear()
     finally:
         conn.close()
 

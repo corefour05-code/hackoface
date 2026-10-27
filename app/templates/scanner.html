@@ -328,8 +328,13 @@ function announceUnknown() {
   setTimeout(() => { unknownAlertActive = false; }, UNKNOWN_ALERT_COOLDOWN_MS);
 }
 
+let boxClearTimer = null;
+let scanInFlight = false;
+
 // Draw bounding boxes on canvas overlay matching the video position (NOT mirrored!)
 function drawBoxes(faces, frameW, frameH) {
+  clearTimeout(boxClearTimer);
+
   if (!tracking || !video.videoWidth) {
     overlay.getContext('2d').clearRect(0, 0, overlay.width, overlay.height);
     return;
@@ -341,15 +346,19 @@ function drawBoxes(faces, frameW, frameH) {
   const ctx = overlay.getContext('2d');
   ctx.clearRect(0, 0, overlay.width, overlay.height);
 
-  const fw = frameW || 480;
-  const fh = frameH || 360;
+  if (!faces || !faces.length) {
+    return; // Cleared!
+  }
+
+  const fw = frameW || 400;
+  const fh = frameH || 300;
   const scaleX = overlay.width / fw;
   const scaleY = overlay.height / fh;
 
   ctx.lineWidth = 3;
   ctx.font = 'bold 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
 
-  for (const f of (faces || [])) {
+  for (const f of faces) {
     const bbox = f.bbox;
     if (!bbox || bbox.length < 4) continue;
 
@@ -381,29 +390,45 @@ function drawBoxes(faces, frameW, frameH) {
     ctx.fillStyle = '#FFFFFF';
     ctx.fillText(label, x1 + 8, labelY - 5);
   }
+
+  // Auto-clear bounding box after 220ms so it immediately disappears if person walks out of frame!
+  boxClearTimer = setTimeout(() => {
+    if (overlay && overlay.getContext) {
+      overlay.getContext('2d').clearRect(0, 0, overlay.width, overlay.height);
+    }
+  }, 220);
 }
 
-// Background scan tick: grabs frame (480px, 0.60 JPEG for lag-free transmission)
+// Background scan tick: grabs frame (400px, 0.52 JPEG for lag-free transmission)
 async function scanTick() {
-  if (!tracking || !video.videoWidth) return;
-
-  const sendW = 480;
-  const sendH = Math.round(sendW * (video.videoHeight / (video.videoWidth || 1))) || 360;
-  canvas.width = sendW;
-  canvas.height = sendH;
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0, sendW, sendH);
-
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.60));
-  if (!blob) return;
-
-  const formData = new FormData();
-  formData.append('image', blob, 'frame.jpg');
+  if (!tracking || !video.videoWidth || scanInFlight) return;
+  scanInFlight = true;
 
   try {
-    const res = await fetch('/api/scan?lab_id=' + currentLabId, { method: 'POST', body: formData });
-    const data = await res.json();
+    const sendW = 400;
+    const sendH = Math.round(sendW * (video.videoHeight / (video.videoWidth || 1))) || 300;
+    canvas.width = sendW;
+    canvas.height = sendH;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, sendW, sendH);
 
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.52));
+    if (!blob) return;
+
+    const formData = new FormData();
+    formData.append('image', blob, 'frame.jpg');
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 450);
+
+    const res = await fetch('/api/scan?lab_id=' + currentLabId, {
+      method: 'POST',
+      body: formData,
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
+    const data = await res.json();
     if (!tracking) return;
 
     // Draw bounding boxes scaled to the returned frame dimensions (Name only!)
@@ -456,7 +481,12 @@ async function scanTick() {
       }
     }
   } catch (err) {
-    // transient network error
+    // transient network error or aborted frame: clear box if face gone
+    if (overlay && overlay.getContext) {
+      overlay.getContext('2d').clearRect(0, 0, overlay.width, overlay.height);
+    }
+  } finally {
+    scanInFlight = false;
   }
 }
 
@@ -579,6 +609,8 @@ trackBtn.addEventListener('click', async () => {
     // STOP CAMERA (Turn off hardware, LED off)
     tracking = false;
     clearTimeout(scanScheduled);
+    clearTimeout(boxClearTimer);
+    scanInFlight = false;
 
     if (video.srcObject) {
       video.srcObject.getTracks().forEach((track) => track.stop());
