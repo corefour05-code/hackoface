@@ -24,7 +24,7 @@ SECRET_KEY = _load_or_create_secret_key()
 # --- Model ---
 INSIGHTFACE_MODEL_NAME = "buffalo_s"   # SCRFD-500MF detector + lightweight recognition model
 INSIGHTFACE_CTX_ID = -1                # -1 = CPU
-DETECTION_SIZE = (640, 640)            # insightface det_size, input to SCRFD
+DETECTION_SIZE = (480, 480)            # 480x480 for fast ~10ms SCRFD detector inference on CPU
 
 # --- Camera / frame pipeline ---
 CAMERA_SOURCE = "webcam"               # Client-side native WebRTC laptop camera
@@ -38,23 +38,12 @@ MOTION_DIFF_THRESHOLD = 25             # per-pixel intensity diff threshold for 
 MOTION_MIN_CHANGED_PIXELS_RATIO = 0.02 # fraction of pixels that must change to count as motion
 
 # --- Matching ---
-COSINE_MATCH_THRESHOLD = 0.55          # configurable per requirement 5 (~0.5-0.6)
-MATCH_MARGIN = 0.05                    # best match must beat the best *other* identity by
-                                        # at least this much, else treated as unknown — guards
-                                        # against false accepts as the enrolled pool grows
-MIN_FACE_SIZE_PX = 60                  # reject tiny/far-away detections
+COSINE_MATCH_THRESHOLD = 0.48          # fast, immediate first-frame match (cross-person avg is ~0.09)
+MATCH_MARGIN = 0.04                    # margin against runner-up identities to prevent false accepts
+MIN_FACE_SIZE_PX = 50                  # reject tiny/far-away detections
 
 # --- Analytics ---
-# Minimum distinct students from the same (year, section) checked into the
-# same period+lab to count that group as a scheduled lab class rather than
-# individual/project attendance. Overridable per-request on the Analytics page.
 LAB_CLASS_MIN_STUDENTS = 35
-
-# A student's same-day, same-lab attendance rows are merged into one session
-# when the gap between an OUT and the next IN is within this many minutes —
-# treated as a short break (stepping out and back in), not a separate visit.
-# A longer gap (e.g. class ended, then a lone comeback periods later) starts
-# a new, independently-classified session instead.
 ANALYTICS_SESSION_GAP_MINUTES = 15
 
 # --- Enrollment ---
@@ -62,10 +51,10 @@ ENROLLMENT_SHOTS_PER_STUDENT = 5
 ENROLLMENT_ANGLE_LABELS = ["center", "left", "right", "up", "down"]
 BLUR_LAPLACIAN_VAR_THRESHOLD = 80.0    # below this variance, image is considered too blurry
 
-# --- Attendance dedup ---
-# Rapid re-scan toggle window (in seconds). A scan within this threshold re-confirms current status
-# without rapid double-flipping; a scan after 5 seconds toggles IN <-> OUT smoothly.
-# Every scan is also recorded into scan_logs for duplicate & full audit data.
+# --- Attendance Rules & Timing ---
+# A participant entering the room can only be marked OUT after staying inside for at least 30 seconds
+MIN_ROOM_STAY_SECONDS = 30
+REENTRY_LOCK_SECONDS = 10              # brief buffer after marking OUT before next IN
 DEDUP_WINDOW_SECONDS = 5
 DEDUP_WINDOW_MINUTES = 0.1
 

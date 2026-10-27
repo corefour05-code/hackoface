@@ -319,7 +319,7 @@ const popup = document.getElementById('recognized-popup');
 const popupName = document.getElementById('recognized-popup-name');
 const canvas = document.createElement('canvas');
 
-const POLL_GAP_MS = 40;
+const POLL_GAP_MS = 25;
 const UNKNOWN_ALERT_COOLDOWN_MS = 3500;
 let currentLogTab = 'sessions';
 
@@ -396,7 +396,7 @@ function drawBoxes(faces, frameW, frameH) {
   const scaleY = overlay.height / fh;
 
   ctx.lineWidth = 3;
-  ctx.font = 'bold 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  ctx.font = 'bold 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
 
   for (const f of (faces || [])) {
     const bbox = f.bbox;
@@ -417,24 +417,22 @@ function drawBoxes(faces, frameW, frameH) {
     ctx.strokeStyle = boxColor;
     ctx.strokeRect(x1, y1, w, h);
 
-    // Label tag (written normally left-to-right, NOT reversed!)
-    const label = known
-      ? `${f.name || f.identity} [${f.team_name || 'Team'}] (${(f.confidence || 0).toFixed(2)})`
-      : 'Unregistered';
+    // Label tag: ONLY the name (no team name, no numbers)
+    const label = known ? (f.name || f.identity) : 'Unregistered';
 
     const textMetrics = ctx.measureText(label);
-    const textW = textMetrics.width + 12;
-    const labelY = Math.max(22, y1 - 6);
+    const textW = textMetrics.width + 16;
+    const labelY = Math.max(24, y1 - 6);
 
     ctx.fillStyle = boxColor;
-    ctx.fillRect(x1, labelY - 20, textW, 22);
+    ctx.fillRect(x1, labelY - 22, textW, 24);
 
     ctx.fillStyle = '#FFFFFF';
-    ctx.fillText(label, x1 + 6, labelY - 4);
+    ctx.fillText(label, x1 + 8, labelY - 5);
   }
 }
 
-// Background scan tick: grabs frame (480px, 0.65 JPEG for ultra-fast, lag-free transmission)
+// Background scan tick: grabs frame (480px, 0.60 JPEG for lag-free transmission)
 async function scanTick() {
   if (!tracking || !video.videoWidth) return;
 
@@ -445,7 +443,7 @@ async function scanTick() {
   const ctx = canvas.getContext('2d');
   ctx.drawImage(video, 0, 0, sendW, sendH);
 
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.65));
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.60));
   if (!blob) return;
 
   const formData = new FormData();
@@ -457,7 +455,7 @@ async function scanTick() {
 
     if (!tracking) return;
 
-    // Draw bounding boxes scaled to the returned frame dimensions
+    // Draw bounding boxes scaled to the returned frame dimensions (Name only!)
     drawBoxes(data.faces, data.frame_width, data.frame_height);
 
     const now = Date.now();
@@ -467,13 +465,13 @@ async function scanTick() {
       for (const attendee of freshList) {
         const id = attendee.identity;
         const lastMarked = personCooldown.get(id) || 0;
-        if (now - lastMarked > 2500) {
+        if (now - lastMarked > 2200) {
           personCooldown.set(id, now);
           const actionText = attendee.status === 'out' ? 'OUT' : 'IN';
           statusBanner.className = 'status-banner recognized';
-          statusBanner.innerHTML = `<i class="ph ph-check-circle" style="vertical-align:middle; margin-right:4px;"></i> <span>${attendee.name} [${attendee.team_name || 'No Team'}] - Checked ${actionText}</span>`;
-          showRecognizedPopup(`${attendee.name} (${actionText})`);
-          speak(`${attendee.name}, ${actionText}`);
+          statusBanner.innerHTML = `<i class="ph ph-check-circle" style="vertical-align:middle; margin-right:4px;"></i> <span>${attendee.name} - Checked ${actionText}</span>`;
+          showRecognizedPopup(`${attendee.name} ${actionText}`);
+          speak(`${attendee.name} ${actionText}`);
           refreshLogs();
 
           clearTimeout(popupTimer);
@@ -481,14 +479,20 @@ async function scanTick() {
         }
       }
     } else if (data.name) {
-      // Known person detected - if duplicate scan, acknowledge subtly
+      // Known person detected
       const id = data.identity;
       const lastMarked = personCooldown.get(id) || 0;
-      if (now - lastMarked > 3000) {
+      if (now - lastMarked > 2500) {
         personCooldown.set(id, now);
-        const actionStr = (data.status || 'IN').toUpperCase();
-        statusBanner.className = 'status-banner tracking';
-        statusBanner.innerHTML = `<i class="ph ph-check" style="vertical-align:middle; margin-right:4px;"></i> <span>${data.name} [${data.team_name || 'Team'}] - Re-scanned (${actionStr})</span>`;
+        if (data.action_code === 'locked_inside') {
+          // Inside within 30-second window: Exit locked until 30s completes
+          statusBanner.className = 'status-banner tracking';
+          statusBanner.innerHTML = `<i class="ph ph-lock-key" style="vertical-align:middle; margin-right:4px;"></i> <span>${data.name} is IN (Exit unlocked in ${data.lock_remaining}s)</span>`;
+        } else {
+          const actionStr = (data.status || 'IN').toUpperCase();
+          statusBanner.className = 'status-banner tracking';
+          statusBanner.innerHTML = `<i class="ph ph-check" style="vertical-align:middle; margin-right:4px;"></i> <span>${data.name} - ${actionStr}</span>`;
+        }
         refreshLogs();
       }
     } else {

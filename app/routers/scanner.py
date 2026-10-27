@@ -16,7 +16,13 @@ from fastapi.responses import StreamingResponse
 from app import state
 from app.deps import require_login
 from app.templating import templates
-from config import CAMERA_SOURCE, DEDUP_WINDOW_MINUTES, DEDUP_WINDOW_SECONDS
+from config import (
+    CAMERA_SOURCE,
+    DEDUP_WINDOW_MINUTES,
+    DEDUP_WINDOW_SECONDS,
+    MIN_ROOM_STAY_SECONDS,
+    REENTRY_LOCK_SECONDS,
+)
 from core.rtsp_stream import get_stream_manager
 from core.security import verify_password
 from core.time_format import format_datetime_time_12h
@@ -27,13 +33,15 @@ router = APIRouter()
 
 def _toggle_attendance(
     conn, identity: str, lab_id: int, today: str, confidence: float = 0.0
-) -> tuple[str, bool, str]:
-    """24-hour event IN/OUT toggle with 5-second rapid toggle window and cross-midnight support.
-    Every detection is recorded into scan_logs for complete duplicate and raw data audit.
-    Automatically closes sessions in other venues if participant moves between the 3 halls."""
+) -> tuple[str, bool, str, int]:
+    """24-hour event IN/OUT toggle with mandatory 30-second room stay requirement.
+    A person who enters the room can only mark OUT after 30 seconds have passed.
+    Every detection is recorded into scan_logs for duplicate & audit data.
+    Automatically closes sessions in other venues if participant moves between the 3 halls.
+    Returns: (status, changed, action_code, lock_remaining_seconds)
+    """
     now = datetime.now()
     now_str = now.isoformat(sep=" ", timespec="seconds")
-    dedup_threshold = timedelta(seconds=DEDUP_WINDOW_SECONDS)
 
     # If the participant has an unclosed session in ANY other venue, close that session first
     other_open = conn.execute(
@@ -56,16 +64,20 @@ def _toggle_attendance(
         except (ValueError, TypeError):
             in_dt = now - timedelta(hours=1)
 
-        if now - in_dt < dedup_threshold:
-            # Re-scan within 5 seconds: Record duplicate data so all scans are captured!
+        seconds_inside = (now - in_dt).total_seconds()
+
+        # RULE: Person who enters the room can only come out after 30 seconds!
+        if seconds_inside < MIN_ROOM_STAY_SECONDS:
+            remaining = max(1, int(MIN_ROOM_STAY_SECONDS - seconds_inside))
+            # Keep inside, record scan into audit log
             conn.execute(
                 "INSERT INTO scan_logs (roll_no, lab_id, scan_time, action, confidence, created_date) VALUES (?, ?, ?, 'DUPLICATE_IN', ?, ?)",
                 (identity, lab_id, now_str, round(confidence, 3), today),
             )
             conn.commit()
-            return "in", False, "duplicate_in"
+            return "in", False, "locked_inside", remaining
 
-        # Checked OUT
+        # 30 seconds have elapsed! Participant marks OUT:
         conn.execute(
             "UPDATE attendance SET out_time=?, out_date=? WHERE id=?",
             (now_str, today, unclosed["id"]),
@@ -75,9 +87,9 @@ def _toggle_attendance(
             (identity, lab_id, now_str, round(confidence, 3), today),
         )
         conn.commit()
-        return "out", True, "marked_out"
+        return "out", True, "marked_out", 0
 
-    # Check rapid re-scan after marking OUT
+    # Participant is currently OUT. Check rapid re-scan buffer after marking OUT:
     last = conn.execute(
         "SELECT * FROM attendance WHERE roll_no=? AND lab_id=? ORDER BY id DESC LIMIT 1",
         (identity, lab_id),
@@ -86,14 +98,14 @@ def _toggle_attendance(
     if last is not None and last["out_time"] is not None:
         try:
             out_dt = datetime.fromisoformat(last["out_time"])
-            if now - out_dt < dedup_threshold:
-                # Re-scan within 5 seconds while OUT: Record duplicate scan
+            if (now - out_dt).total_seconds() < REENTRY_LOCK_SECONDS:
+                # Buffer immediately after stepping out: record duplicate scan
                 conn.execute(
                     "INSERT INTO scan_logs (roll_no, lab_id, scan_time, action, confidence, created_date) VALUES (?, ?, ?, 'DUPLICATE_OUT', ?, ?)",
                     (identity, lab_id, now_str, round(confidence, 3), today),
                 )
                 conn.commit()
-                return "out", False, "duplicate_out"
+                return "out", False, "duplicate_out", 0
         except (ValueError, TypeError):
             pass
 
@@ -107,7 +119,7 @@ def _toggle_attendance(
         (identity, lab_id, now_str, round(confidence, 3), today),
     )
     conn.commit()
-    return "in", True, "marked_in"
+    return "in", True, "marked_in", 0
 
 
 @router.get("/scanner")
@@ -303,18 +315,19 @@ async def scan(request: Request, image: UploadFile = File(...)):
                 f["team_name"] = person["team_name"]
 
                 conf = float(f.get("confidence", 0.0))
-                status, changed, action_code = _toggle_attendance(conn, identity, lab_id, today, conf)
+                status, changed, action_code, lock_rem = _toggle_attendance(conn, identity, lab_id, today, conf)
                 f["status"] = status
                 f["marked"] = changed
                 f["action_code"] = action_code
+                f["lock_remaining"] = lock_rem
 
                 attendee_info = {
                     "name": person["name"],
-                    "team_name": person["team_name"],
                     "identity": identity,
                     "status": status,
                     "marked": changed,
                     "action_code": action_code,
+                    "lock_remaining": lock_rem,
                 }
 
                 if changed:
@@ -328,11 +341,11 @@ async def scan(request: Request, image: UploadFile = File(...)):
         return {
             "faces": results,
             "name": primary.get("name") if primary else None,
-            "team_name": primary.get("team_name") if primary else None,
             "identity": primary.get("identity") if primary else None,
             "status": primary.get("status") if primary else None,
             "marked": primary.get("marked", False) if primary else False,
             "action_code": primary.get("action_code") if primary else None,
+            "lock_remaining": primary.get("lock_remaining", 0) if primary else 0,
             "fresh": freshly_marked,
             "frame_width": int(frame.shape[1]),
             "frame_height": int(frame.shape[0]),
