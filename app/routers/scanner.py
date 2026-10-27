@@ -69,12 +69,17 @@ def _toggle_attendance(
         # RULE: Person who enters the room can only come out after 30 seconds!
         if seconds_inside < MIN_ROOM_STAY_SECONDS:
             remaining = max(1, int(MIN_ROOM_STAY_SECONDS - seconds_inside))
-            # Keep inside, record scan into audit log
-            conn.execute(
-                "INSERT INTO scan_logs (roll_no, lab_id, scan_time, action, confidence, created_date) VALUES (?, ?, ?, 'DUPLICATE_IN', ?, ?)",
-                (identity, lab_id, now_str, round(confidence, 3), today),
-            )
-            conn.commit()
+            # Throttle duplicate scan logging to avoid flooding DB with frame-by-frame rows
+            recent_log = conn.execute(
+                "SELECT id FROM scan_logs WHERE roll_no=? AND lab_id=? AND scan_time >= datetime('now', '-30 seconds') LIMIT 1",
+                (identity, lab_id),
+            ).fetchone()
+            if not recent_log:
+                conn.execute(
+                    "INSERT INTO scan_logs (roll_no, lab_id, scan_time, action, confidence, created_date) VALUES (?, ?, ?, 'DUPLICATE_IN', ?, ?)",
+                    (identity, lab_id, now_str, round(confidence, 3), today),
+                )
+                conn.commit()
             return "in", False, "locked_inside", remaining
 
         # 30 seconds have elapsed! Participant marks OUT:
@@ -98,18 +103,25 @@ def _toggle_attendance(
     if last is not None and last["out_time"] is not None:
         try:
             out_dt = datetime.fromisoformat(last["out_time"])
-            if (now - out_dt).total_seconds() < REENTRY_LOCK_SECONDS:
-                # Buffer immediately after stepping out: record duplicate scan
-                conn.execute(
-                    "INSERT INTO scan_logs (roll_no, lab_id, scan_time, action, confidence, created_date) VALUES (?, ?, ?, 'DUPLICATE_OUT', ?, ?)",
-                    (identity, lab_id, now_str, round(confidence, 3), today),
-                )
-                conn.commit()
-                return "out", False, "duplicate_out", 0
+            seconds_outside = (now - out_dt).total_seconds()
+            # RULE: Person who leaves the room can only come back in after 30 seconds!
+            if seconds_outside < REENTRY_LOCK_SECONDS:
+                remaining = max(1, int(REENTRY_LOCK_SECONDS - seconds_outside))
+                recent_log = conn.execute(
+                    "SELECT id FROM scan_logs WHERE roll_no=? AND lab_id=? AND scan_time >= datetime('now', '-30 seconds') LIMIT 1",
+                    (identity, lab_id),
+                ).fetchone()
+                if not recent_log:
+                    conn.execute(
+                        "INSERT INTO scan_logs (roll_no, lab_id, scan_time, action, confidence, created_date) VALUES (?, ?, ?, 'DUPLICATE_OUT', ?, ?)",
+                        (identity, lab_id, now_str, round(confidence, 3), today),
+                    )
+                    conn.commit()
+                return "out", False, "locked_outside", remaining
         except (ValueError, TypeError):
             pass
 
-    # Start fresh IN session
+    # 30 seconds have elapsed outside! Start fresh IN session
     conn.execute(
         "INSERT INTO attendance (roll_no, lab_id, session_date, in_time) VALUES (?,?,?,?)",
         (identity, lab_id, today, now_str),

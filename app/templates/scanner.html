@@ -229,18 +229,10 @@
             <span class="live-dot"></span>
             <span>Active Venue Activity Log</span>
           </div>
-          <div style="display:flex; gap:0.4rem; align-items:center; margin-left:auto;">
-            <button type="button" id="tab-sessions-btn" class="btn btn-primary" style="padding:0.25rem 0.65rem; font-size:0.75rem;" onclick="switchLogTab('sessions')">
-              Sessions (IN / OUT)
-            </button>
-            <button type="button" id="tab-raw-btn" class="btn btn-outline" style="padding:0.25rem 0.65rem; font-size:0.75rem;" onclick="switchLogTab('raw')">
-              ⚡ All Scans & Duplicates
-            </button>
-            <span class="today-count-badge" id="today-count-badge">0 active in hall</span>
-          </div>
+          <span class="today-count-badge" id="today-count-badge" style="margin-left:auto;">0 active in hall</span>
         </div>
 
-        <!-- Tab 1: Sessions -->
+        <!-- Clean Attendance Sessions (No Duplicates, No Team Column) -->
         <div class="logs-scroll" id="view-sessions">
           <table id="logs-table">
             <thead>
@@ -248,7 +240,6 @@
                 <th style="width:40px;">#</th>
                 <th>Participant ID</th>
                 <th>Full Name</th>
-                <th>Team Name</th>
                 <th>In Time</th>
                 <th>In Date</th>
                 <th>Out Time</th>
@@ -257,27 +248,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr><td colspan="9" class="empty-state">Loading active records...</td></tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Tab 2: Raw & Duplicate Scans -->
-        <div class="logs-scroll" id="view-raw" style="display:none;">
-          <table id="raw-logs-table">
-            <thead>
-              <tr>
-                <th style="width:40px;">#</th>
-                <th>Participant ID</th>
-                <th>Full Name</th>
-                <th>Team Name</th>
-                <th>Scan Timestamp</th>
-                <th>Action Detected</th>
-                <th>Confidence</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr><td colspan="7" class="empty-state">No scan events recorded yet.</td></tr>
+              <tr><td colspan="8" class="empty-state">Loading active records...</td></tr>
             </tbody>
           </table>
         </div>
@@ -321,27 +292,7 @@ const canvas = document.createElement('canvas');
 
 const POLL_GAP_MS = 25;
 const UNKNOWN_ALERT_COOLDOWN_MS = 3500;
-let currentLogTab = 'sessions';
 
-function switchLogTab(tab) {
-  currentLogTab = tab;
-  const sessionsDiv = document.getElementById('view-sessions');
-  const rawDiv = document.getElementById('view-raw');
-  const sessionsBtn = document.getElementById('tab-sessions-btn');
-  const rawBtn = document.getElementById('tab-raw-btn');
-
-  if (tab === 'sessions') {
-    sessionsDiv.style.display = 'block';
-    rawDiv.style.display = 'none';
-    sessionsBtn.className = 'btn btn-primary';
-    rawBtn.className = 'btn btn-outline';
-  } else {
-    sessionsDiv.style.display = 'none';
-    rawDiv.style.display = 'block';
-    sessionsBtn.className = 'btn btn-outline';
-    rawBtn.className = 'btn btn-primary';
-  }
-}
 
 function speak(text) {
   if (!('speechSynthesis' in window)) return;
@@ -487,7 +438,11 @@ async function scanTick() {
         if (data.action_code === 'locked_inside') {
           // Inside within 30-second window: Exit locked until 30s completes
           statusBanner.className = 'status-banner tracking';
-          statusBanner.innerHTML = `<i class="ph ph-lock-key" style="vertical-align:middle; margin-right:4px;"></i> <span>${data.name} is IN (Exit unlocked in ${data.lock_remaining}s)</span>`;
+          statusBanner.innerHTML = `<i class="ph ph-lock-key" style="vertical-align:middle; margin-right:4px;"></i> <span>${data.name} is IN (Exit in ${data.lock_remaining}s)</span>`;
+        } else if (data.action_code === 'locked_outside') {
+          // Outside within 30-second window: Re-entry locked until 30s completes
+          statusBanner.className = 'status-banner tracking';
+          statusBanner.innerHTML = `<i class="ph ph-lock-key" style="vertical-align:middle; margin-right:4px;"></i> <span>${data.name} is OUT (Re-entry in ${data.lock_remaining}s)</span>`;
         } else {
           const actionStr = (data.status || 'IN').toUpperCase();
           statusBanner.className = 'status-banner tracking';
@@ -530,24 +485,23 @@ async function switchVenue(labId) {
   }
 }
 
-// Refresh log tables for active venue (both Sessions and Raw Scans)
+// Refresh log tables for active venue (clean session rows only)
 async function refreshLogs() {
   try {
     const res = await fetch('/api/scanner/logs?lab_id=' + currentLabId);
     const data = await res.json();
     document.getElementById('today-count-badge').textContent = `${data.count || 0} active in hall`;
 
-    // 1. Render Sessions Table
+    // Render Clean Sessions Table (Participant ID, Full Name, In Time, In Date, Out Time, Out Date, Status)
     const tbody = document.querySelector('#logs-table tbody');
     if (!data.rows || !data.rows.length) {
-      tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No attendance records in this venue yet.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No attendance records in this venue yet.</td></tr>';
     } else {
       tbody.innerHTML = data.rows.map((r, i) => `
         <tr>
           <td>${i + 1}</td>
           <td><strong style="color:#0284C7;">${r.roll_no || '-'}</strong></td>
           <td style="font-weight:600;">${r.name}</td>
-          <td><span class="badge badge-blue" style="font-size:0.8rem;">${r.team_name || 'No Team'}</span></td>
           <td class="in-time">${r.in_time || '-'}</td>
           <td>${r.in_date || '-'}</td>
           <td class="out-time">${r.out_time || '-'}</td>
@@ -555,35 +509,6 @@ async function refreshLogs() {
           <td>${!r.out_time ? '<span class="badge badge-teal">IN VENUE</span>' : '<span class="badge badge-grey">OUT</span>'}</td>
         </tr>
       `).join('');
-    }
-
-    // 2. Render Raw & Duplicate Scans Table
-    const rawTbody = document.querySelector('#raw-logs-table tbody');
-    if (rawTbody) {
-      if (!data.raw_scans || !data.raw_scans.length) {
-        rawTbody.innerHTML = '<tr><td colspan="7" class="empty-state">No scan events recorded yet.</td></tr>';
-      } else {
-        rawTbody.innerHTML = data.raw_scans.map((r, i) => {
-          let badgeClass = 'badge-blue';
-          let actionLabel = r.action;
-          if (r.action === 'IN') { badgeClass = 'badge-teal'; actionLabel = 'CHECKED IN'; }
-          else if (r.action === 'OUT') { badgeClass = 'badge-danger'; actionLabel = 'CHECKED OUT'; }
-          else if (r.action === 'DUPLICATE_IN') { badgeClass = 'badge-teal'; actionLabel = 'RE-SCAN (ALREADY IN)'; }
-          else if (r.action === 'DUPLICATE_OUT') { badgeClass = 'badge-grey'; actionLabel = 'RE-SCAN (ALREADY OUT)'; }
-
-          return `
-            <tr>
-              <td>${i + 1}</td>
-              <td><strong style="color:#0284C7;">${r.roll_no || '-'}</strong></td>
-              <td style="font-weight:600;">${r.name}</td>
-              <td><span class="badge badge-blue" style="font-size:0.8rem;">${r.team_name || 'No Team'}</span></td>
-              <td style="font-size:0.85rem; color:#334155;">${r.scan_time_12h || r.scan_time || '-'}</td>
-              <td><span class="badge ${badgeClass}" style="font-size:0.75rem;">${actionLabel}</span></td>
-              <td style="color:#64748B; font-size:0.8rem;">${r.confidence ? r.confidence.toFixed(2) : '-'}</td>
-            </tr>
-          `;
-        }).join('');
-      }
     }
   } catch (e) { /* keep last known rows */ }
 }

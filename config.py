@@ -52,11 +52,13 @@ ENROLLMENT_ANGLE_LABELS = ["center", "left", "right", "up", "down"]
 BLUR_LAPLACIAN_VAR_THRESHOLD = 80.0    # below this variance, image is considered too blurry
 
 # --- Attendance Rules & Timing ---
-# A participant entering the room can only be marked OUT after staying inside for at least 30 seconds
+# Exactly 30 seconds required between transitions:
+# 1. After checking IN: must stay in room at least 30 seconds before checking OUT.
+# 2. After checking OUT: must wait at least 30 seconds before checking back IN.
 MIN_ROOM_STAY_SECONDS = 30
-REENTRY_LOCK_SECONDS = 10              # brief buffer after marking OUT before next IN
-DEDUP_WINDOW_SECONDS = 5
-DEDUP_WINDOW_MINUTES = 0.1
+REENTRY_LOCK_SECONDS = 30
+DEDUP_WINDOW_SECONDS = 30
+DEDUP_WINDOW_MINUTES = 0.5
 
 # --- Web app auth ---
 ATTENDANCE_PASSCODE = "attendance123"  # gate before the scanner login (Page 5)

@@ -21,7 +21,7 @@ import time
 import webbrowser
 from pathlib import Path
 
-PORT = 8001
+PORT = 7010
 
 
 def _bundle_root() -> Path:
