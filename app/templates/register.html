@@ -45,13 +45,13 @@
         <input type="text" name="name" class="form-control" required placeholder="Enter your full name" />
       </label>
       <label>Team Name *
-        <input type="text" name="team_name" list="teams-list" class="form-control" required placeholder="e.g. ByteBandits or Team Alpha" />
-        <datalist id="teams-list">
-          {% for t in existing_teams %}
-          <option value="{{ t }}"></option>
+        <select name="team_name" class="form-control" required style="font-weight:600; color:#0F172A;">
+          <option value="">-- Select Team (30 Teams) --</option>
+          {% for t in hackathon_teams %}
+          <option value="{{ t }}">{{ loop.index }}. {{ t }}</option>
           {% endfor %}
-        </datalist>
-        <small style="color:var(--text-muted); font-size:0.75rem;">Max 4 members per team &bull; 30 teams max</small>
+        </select>
+        <small style="color:var(--text-muted); font-size:0.75rem;">Max 4 members per team &bull; 30 Official Hackathon Teams</small>
       </label>
       <button type="submit" class="btn btn-primary btn-block" id="submit-btn">Save Details</button>
     </form>

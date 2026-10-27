@@ -48,13 +48,16 @@
       <input type="text" name="name" class="form-control" required value="{{ student.name if student else '' }}" />
     </label>
     <label>Team Name *
-      <input type="text" name="team_name" list="teams-list" class="form-control" required placeholder="e.g. ByteBandits or Team Alpha" value="{{ student.team_name if student and student.team_name else '' }}" />
-      <datalist id="teams-list">
-        {% for t in existing_teams %}
-        <option value="{{ t }}"></option>
+      <select name="team_name" class="form-control" required style="font-weight:600; color:#0F172A;">
+        <option value="">-- Select Team (30 Teams) --</option>
+        {% for t in hackathon_teams %}
+        <option value="{{ t }}" {{ 'selected' if student and student.team_name == t else '' }}>{{ loop.index }}. {{ t }}</option>
         {% endfor %}
-      </datalist>
-      <small style="color:var(--text-muted); font-size:0.75rem;">Max 4 members per team &bull; Up to 30 teams</small>
+        {% if student and student.team_name and student.team_name not in hackathon_teams %}
+        <option value="{{ student.team_name }}" selected>{{ student.team_name }} (Custom)</option>
+        {% endif %}
+      </select>
+      <small style="color:var(--text-muted); font-size:0.75rem;">Max 4 members per team &bull; 30 Official Hackathon Teams</small>
     </label>
   </div>
 
@@ -180,8 +183,15 @@ async function checkRollNo() {
       rollNoWarning.style.display = 'block';
     } else if (data.exists) {
       nameInput.value = data.name || '';
-      const teamInput = document.querySelector('input[name="team_name"]');
-      if (teamInput && data.team_name) teamInput.value = data.team_name;
+      const teamInput = document.querySelector('[name="team_name"]');
+      if (teamInput && data.team_name) {
+        let opt = Array.from(teamInput.options).find(o => o.value === data.team_name);
+        if (!opt) {
+          opt = new Option(data.team_name, data.team_name, true, true);
+          teamInput.add(opt);
+        }
+        teamInput.value = data.team_name;
+      }
       batchInput.value = data.batch || '';
       sectionInput.value = data.section || '';
       if (data.year) yearSelect.value = data.year;
@@ -273,7 +283,7 @@ const rollNoInput = document.getElementById('roll_no-input');
 const rollNoWarning = document.getElementById('roll-no-warning');
 const rollNoInfo = document.getElementById('roll-no-info');
 const nameInput = document.querySelector('input[name="name"]');
-const teamInput = document.querySelector('input[name="team_name"]');
+const teamInput = document.querySelector('[name="team_name"]');
 const submitBtn = document.getElementById('submit-btn');
 const studentForm = document.getElementById('student-form');
 const recaptureWrap = document.getElementById('recapture-wrap');
@@ -295,7 +305,14 @@ async function handleRollNoLookup() {
         return;
       }
       if (nameInput) nameInput.value = data.name || '';
-      if (teamInput && data.team_name) teamInput.value = data.team_name;
+      if (teamInput && data.team_name) {
+        let opt = Array.from(teamInput.options).find(o => o.value === data.team_name);
+        if (!opt) {
+          opt = new Option(data.team_name, data.team_name, true, true);
+          teamInput.add(opt);
+        }
+        teamInput.value = data.team_name;
+      }
       if (embCountText) embCountText.textContent = data.embedding_count;
       recaptureWrap.style.display = 'block';
       submitBtn.disabled = false;

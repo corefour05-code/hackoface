@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from app import state
 from app.deps import admin_template_context, require_main_admin
 from app.templating import templates
+from config import HACKATHON_TEAMS
 from core.image_utils import decode_data_url
 from db.connection import get_connection
 from enrollment.enroll import upsert_student, validate_roll_no
@@ -166,6 +167,7 @@ def student_add_form(request: Request):
         "mode": "add",
         "student": None,
         "existing_teams": existing_teams,
+        "hackathon_teams": HACKATHON_TEAMS,
         "error": request.query_params.get("error"),
     }
     return templates.TemplateResponse(request, "student_form.html", context)
@@ -263,6 +265,7 @@ def student_edit_form(request: Request, roll_no: str):
         "student": student,
         "embedding_count": embedding_count,
         "existing_teams": existing_teams,
+        "hackathon_teams": HACKATHON_TEAMS,
         "error": request.query_params.get("error"),
     }
     return templates.TemplateResponse(request, "student_form.html", context)

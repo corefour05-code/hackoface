@@ -69,3 +69,38 @@ EDIT_RECAPTURE_SHOTS = 2               # photos required when re-capturing faces
 SEED_MAIN_LAB_NAME = "Main Lab"
 SEED_ADMIN_USERNAME = "admin"
 SEED_ADMIN_PASSWORD = "admin123"       # change via Manage Users after first login
+
+# --- Official Hackathon 30 Teams (from data.xlsx) ---
+HACKATHON_TEAMS = [
+    "Electrodes",
+    "Neural Admins",
+    "DeadCode",
+    "Tech Stars",
+    "ThinkForge",
+    "Nexora",
+    "Team Luna",
+    "Elite Coders",
+    "Edge Guardian",
+    "MAD²",
+    "Apex Alliance",
+    "Spartans",
+    "JARsenses",
+    "MKCE-Quadrax",
+    "Healix",
+    "Thermal OPS",
+    "Jetscape",
+    "DroneX",
+    "Nexsafe",
+    "Apex",
+    "Next Gen Coders",
+    "CodeBlooded",
+    "Unique",
+    "Team Vision",
+    "Cerebros",
+    "Quad Squad",
+    "Team Squard",
+    "Team",
+    "Team Jatayu",
+    "Quantum Shield",
+]
+

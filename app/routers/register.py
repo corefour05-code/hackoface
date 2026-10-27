@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
+from config import HACKATHON_TEAMS
 from app.templating import templates
 from db.connection import get_connection
 from enrollment.enroll import validate_roll_no
@@ -31,6 +32,7 @@ def register_form(request: Request):
         "success": request.query_params.get("success"),
         "error": request.query_params.get("error"),
         "existing_teams": existing_teams,
+        "hackathon_teams": HACKATHON_TEAMS,
     })
 
 
