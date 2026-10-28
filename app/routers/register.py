@@ -25,6 +25,7 @@ def register_form(request: Request):
                 "SELECT DISTINCT team_name FROM students WHERE team_name != '' ORDER BY team_name"
             ).fetchall()
         ]
+        extra_teams = [t for t in existing_teams if t not in HACKATHON_TEAMS]
     finally:
         conn.close()
 
@@ -32,6 +33,7 @@ def register_form(request: Request):
         "success": request.query_params.get("success"),
         "error": request.query_params.get("error"),
         "existing_teams": existing_teams,
+        "extra_teams": extra_teams,
         "hackathon_teams": HACKATHON_TEAMS,
     })
 
@@ -60,6 +62,9 @@ async def register_submit(request: Request):
 
     name = form.get("name", "").strip()
     team_name = form.get("team_name", "").strip()
+    custom_team_name = form.get("custom_team_name", "").strip()
+    if team_name == "__OTHER__" or not team_name:
+        team_name = custom_team_name
 
     if not name:
         return RedirectResponse("/register?error=Full Name is required", status_code=302)
@@ -81,16 +86,6 @@ async def register_submit(request: Request):
         if team_count >= 4:
             return RedirectResponse(
                 f"/register?error=Team '{team_name}' already has the maximum of 4 members", status_code=302
-            )
-
-        # Enforce max 30 teams
-        total_teams = conn.execute(
-            "SELECT COUNT(DISTINCT team_name) c FROM students WHERE team_name != '' AND team_name != ?",
-            (team_name,)
-        ).fetchone()["c"]
-        if total_teams >= 30:
-            return RedirectResponse(
-                "/register?error=Maximum limit of 30 teams reached for the hackathon", status_code=302
             )
 
         conn.execute(

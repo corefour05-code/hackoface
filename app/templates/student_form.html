@@ -48,16 +48,30 @@
       <input type="text" name="name" class="form-control" required value="{{ student.name if student else '' }}" />
     </label>
     <label>Team Name *
-      <select name="team_name" class="form-control" required style="font-weight:600; color:#0F172A;">
-        <option value="">-- Select Team (30 Teams) --</option>
-        {% for t in hackathon_teams %}
-        <option value="{{ t }}" {{ 'selected' if student and student.team_name == t else '' }}>{{ loop.index }}. {{ t }}</option>
-        {% endfor %}
-        {% if student and student.team_name and student.team_name not in hackathon_teams %}
-        <option value="{{ student.team_name }}" selected>{{ student.team_name }} (Custom)</option>
+      <select name="team_name" id="team-select" class="form-control" required style="font-weight:600; color:#0F172A;" onchange="handleTeamChange(this)">
+        <option value="">-- Select Team --</option>
+        <optgroup label="Official Hackathon Teams (30)">
+          {% for t in hackathon_teams %}
+          <option value="{{ t }}" {{ 'selected' if student and student.team_name == t else '' }}>{{ loop.index }}. {{ t }}</option>
+          {% endfor %}
+        </optgroup>
+        {% if extra_teams %}
+        <optgroup label="Additional Registered Teams">
+          {% for t in extra_teams %}
+          <option value="{{ t }}" {{ 'selected' if student and student.team_name == t else '' }}>{{ t }}</option>
+          {% endfor %}
+        </optgroup>
         {% endif %}
+        {% if student and student.team_name and student.team_name not in hackathon_teams and (not extra_teams or student.team_name not in extra_teams) %}
+        <option value="{{ student.team_name }}" selected>{{ student.team_name }}</option>
+        {% endif %}
+        <option value="__OTHER__" style="font-weight:700; color:#2563EB;">➕ + Add New / Other Team...</option>
       </select>
-      <small style="color:var(--text-muted); font-size:0.75rem;">Max 4 members per team &bull; 30 Official Hackathon Teams</small>
+      <div id="custom-team-wrap" style="display:none; margin-top:0.5rem;">
+        <input type="text" id="custom-team-input" name="custom_team_name" class="form-control" placeholder="Enter new team name (e.g. CyberKnights)" style="font-weight:600; border: 2px solid #3B82F6;" />
+        <small style="color:var(--text-muted); font-size:0.75rem;">Type the new team name to register this participant under a new team.</small>
+      </div>
+      <small style="color:var(--text-muted); font-size:0.75rem;">Max 4 members per team &bull; 30 Official Teams + Extra Teams Supported</small>
     </label>
   </div>
 
@@ -124,6 +138,38 @@
 
 <script src="/static/face-capture.js"></script>
 <script>
+function handleTeamChange(selectEl) {
+  const wrap = document.getElementById('custom-team-wrap');
+  const input = document.getElementById('custom-team-input');
+  if (!wrap || !input) return;
+  if (selectEl.value === '__OTHER__') {
+    wrap.style.display = 'block';
+    input.required = true;
+    input.focus();
+  } else {
+    wrap.style.display = 'none';
+    input.required = false;
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const form = document.querySelector('form');
+  if (form) {
+    form.addEventListener('submit', (e) => {
+      const select = document.getElementById('team-select');
+      const customInput = document.getElementById('custom-team-input');
+      if (select && select.value === '__OTHER__') {
+        if (!customInput || !customInput.value.trim()) {
+          e.preventDefault();
+          alert('Please enter a team name for the new team.');
+          if (customInput) customInput.focus();
+          return false;
+        }
+      }
+    });
+  }
+});
+
 {% if mode == 'add' %}
 let photosDone = false;
 let rollNoBlocked = false;
@@ -191,6 +237,7 @@ async function checkRollNo() {
           teamInput.add(opt);
         }
         teamInput.value = data.team_name;
+        handleTeamChange(teamInput);
       }
       batchInput.value = data.batch || '';
       sectionInput.value = data.section || '';
@@ -312,6 +359,7 @@ async function handleRollNoLookup() {
           teamInput.add(opt);
         }
         teamInput.value = data.team_name;
+        handleTeamChange(teamInput);
       }
       if (embCountText) embCountText.textContent = data.embedding_count;
       recaptureWrap.style.display = 'block';

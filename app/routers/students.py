@@ -158,6 +158,7 @@ def student_add_form(request: Request):
                 "SELECT DISTINCT team_name FROM students WHERE team_name != '' ORDER BY team_name"
             ).fetchall()
         ]
+        extra_teams = [t for t in existing_teams if t not in HACKATHON_TEAMS]
     finally:
         conn.close()
 
@@ -167,6 +168,7 @@ def student_add_form(request: Request):
         "mode": "add",
         "student": None,
         "existing_teams": existing_teams,
+        "extra_teams": extra_teams,
         "hackathon_teams": HACKATHON_TEAMS,
         "error": request.query_params.get("error"),
     }
@@ -187,6 +189,9 @@ async def student_add_submit(request: Request):
 
     name = form.get("name", "").strip()
     team_name = form.get("team_name", "").strip()
+    custom_team_name = form.get("custom_team_name", "").strip()
+    if team_name == "__OTHER__" or not team_name:
+        team_name = custom_team_name
 
     if not name:
         return RedirectResponse("/students/add?error=Name is required", status_code=302)
@@ -211,16 +216,6 @@ async def student_add_submit(request: Request):
         if team_count >= 4:
             return RedirectResponse(
                 f"/students/add?error=Team '{team_name}' already has the maximum of 4 members", status_code=302
-            )
-
-        # Enforce max 30 teams
-        total_teams = conn.execute(
-            "SELECT COUNT(DISTINCT team_name) c FROM students WHERE team_name != '' AND team_name != ?",
-            (team_name,)
-        ).fetchone()["c"]
-        if total_teams >= 30:
-            return RedirectResponse(
-                "/students/add?error=Maximum limit of 30 teams has been reached", status_code=302
             )
 
         upsert_student(conn, roll_no, name, team_name)
@@ -252,6 +247,7 @@ def student_edit_form(request: Request, roll_no: str):
                 "SELECT DISTINCT team_name FROM students WHERE team_name != '' ORDER BY team_name"
             ).fetchall()
         ]
+        extra_teams = [t for t in existing_teams if t not in HACKATHON_TEAMS]
     finally:
         conn.close()
 
@@ -265,6 +261,7 @@ def student_edit_form(request: Request, roll_no: str):
         "student": student,
         "embedding_count": embedding_count,
         "existing_teams": existing_teams,
+        "extra_teams": extra_teams,
         "hackathon_teams": HACKATHON_TEAMS,
         "error": request.query_params.get("error"),
     }
@@ -280,6 +277,9 @@ async def student_edit_submit(request: Request, roll_no: str):
     form = await request.form()
     name = form.get("name", "").strip()
     team_name = form.get("team_name", "").strip()
+    custom_team_name = form.get("custom_team_name", "").strip()
+    if team_name == "__OTHER__" or not team_name:
+        team_name = custom_team_name
 
     try:
         new_roll_no = validate_roll_no(form.get("roll_no", roll_no))

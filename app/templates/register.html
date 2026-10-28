@@ -45,19 +45,63 @@
         <input type="text" name="name" class="form-control" required placeholder="Enter your full name" />
       </label>
       <label>Team Name *
-        <select name="team_name" class="form-control" required style="font-weight:600; color:#0F172A;">
-          <option value="">-- Select Team (30 Teams) --</option>
-          {% for t in hackathon_teams %}
-          <option value="{{ t }}">{{ loop.index }}. {{ t }}</option>
-          {% endfor %}
+        <select name="team_name" id="team-select" class="form-control" required style="font-weight:600; color:#0F172A;" onchange="handleTeamChange(this)">
+          <option value="">-- Select Team --</option>
+          <optgroup label="Official Hackathon Teams (30)">
+            {% for t in hackathon_teams %}
+            <option value="{{ t }}">{{ loop.index }}. {{ t }}</option>
+            {% endfor %}
+          </optgroup>
+          {% if extra_teams %}
+          <optgroup label="Additional Registered Teams">
+            {% for t in extra_teams %}
+            <option value="{{ t }}">{{ t }}</option>
+            {% endfor %}
+          </optgroup>
+          {% endif %}
+          <option value="__OTHER__" style="font-weight:700; color:#2563EB;">➕ + Add New / Other Team...</option>
         </select>
-        <small style="color:var(--text-muted); font-size:0.75rem;">Max 4 members per team &bull; 30 Official Hackathon Teams</small>
+        <div id="custom-team-wrap" style="display:none; margin-top:0.5rem;">
+          <input type="text" id="custom-team-input" name="custom_team_name" class="form-control" placeholder="Enter new team name (e.g. CyberKnights)" style="font-weight:600; border: 2px solid #3B82F6;" />
+          <small style="color:var(--text-muted); font-size:0.75rem;">Type the new team name to register your team.</small>
+        </div>
+        <small style="color:var(--text-muted); font-size:0.75rem;">Max 4 members per team &bull; 30 Official Teams + Extra Teams Supported</small>
       </label>
       <button type="submit" class="btn btn-primary btn-block" id="submit-btn">Save Details</button>
     </form>
     <div class="helper">Made a typo? See the lab in-charge to have it corrected — the form only accepts each ID once.</div>
   </div>
   <script>
+    function handleTeamChange(selectEl) {
+      const wrap = document.getElementById('custom-team-wrap');
+      const input = document.getElementById('custom-team-input');
+      if (!wrap || !input) return;
+      if (selectEl.value === '__OTHER__') {
+        wrap.style.display = 'block';
+        input.required = true;
+        input.focus();
+      } else {
+        wrap.style.display = 'none';
+        input.required = false;
+      }
+    }
+
+    const regForm = document.getElementById('register-form');
+    if (regForm) {
+      regForm.addEventListener('submit', (e) => {
+        const select = document.getElementById('team-select');
+        const customInput = document.getElementById('custom-team-input');
+        if (select && select.value === '__OTHER__') {
+          if (!customInput || !customInput.value.trim()) {
+            e.preventDefault();
+            alert('Please enter a team name for the new team.');
+            if (customInput) customInput.focus();
+            return false;
+          }
+        }
+      });
+    }
+
     const rollNoInput = document.getElementById('roll_no-input');
     const rollNoWarning = document.getElementById('roll-no-warning');
     const submitBtn = document.getElementById('submit-btn');
